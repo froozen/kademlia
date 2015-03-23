@@ -2,11 +2,14 @@
 Module      : Network.Kademlia.Protocol
 Description : Implementation of the actual protocol
 
-Netowrk.Kademlia.Protocol implements the parsing of ByteStrings into 'Protocol'
--Values.
+Netowrk.Kademlia.Protocol implements the parsing and serialisation of
+ByteStrings into 'Protocol'-Values.
 -}
 
-module Network.Kademlia.Protocol where
+module Network.Kademlia.Protocol
+    ( serialize
+    , parse
+    ) where
 
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as C
@@ -15,22 +18,7 @@ import Data.List (foldl')
 
 import Network.Kademlia.Networking
 import Network.Kademlia.Types
-
--- | Representation of a protocl signal
-data Signal v = Signal {
-      peerId :: Id
-    , peer :: Peer
-    , command :: Command v
-    }
-
--- | Representations of the different protocol commands
-data Command a = PING
-               | STORE        Key a
-               | FIND_NODE    Id
-               | RETURN_NODES KBucket
-               | FIND_VALUE   Key
-               | RETURN_VALUE a
-                 deriving (Eq, Show)
+import Network.Kademlia.Protocol.Parsing
 
 -- | Retrieve the assigned protocolId
 commandId :: Command a -> Word8
