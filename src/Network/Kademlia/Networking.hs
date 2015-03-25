@@ -7,10 +7,12 @@ Network.Kademlia.Networking implements all the UDP network functionality.
 
 module Network.Kademlia.Networking
     ( openOn
+    , sendTo
     ) where
 
+-- Just to make sure I'll only use the ByteString functions
 import Network.Socket hiding (send, sendTo, recv, recvFrom)
-import Network.Socket.ByteString
+import qualified Network.Socket.ByteString as S
 import Data.ByteString
 import Control.Monad (forever)
 import Control.Concurrent (forkIO)
@@ -42,7 +44,7 @@ openOn port = withSocketsDo $ do
 listenOn :: (Id i, Read a) =>  Socket -> Chan (Signal i a) -> IO ()
 listenOn sock chan = forever $ do
     -- Read from socket
-    (received, addr) <- recvFrom sock 1024
+    (received, addr) <- S.recvFrom sock 1024
     -- Try to create peer
     peer <- toPeer addr
     case peer of
@@ -52,3 +54,16 @@ listenOn sock chan = forever $ do
             case parse p received of
                 Left _    -> return ()
                 Right sig -> writeChan chan sig
+
+-- | Send a Signal to a Peer
+sendTo :: (Id i, Show a) => Peer -> i -> Command i a -> IO ()
+sendTo (Peer host port) id sig = withSocketsDo $ do
+    -- Get Peer's address
+    (peeraddr:_) <- getAddrInfo Nothing (Just host)
+                      (Just . show . fromIntegral $ port)
+    -- Create socket
+    sock <- socket (addrFamily peeraddr) Datagram defaultProtocol
+
+    -- Send the signal
+    S.sendTo sock (serialize id sig) (addrAddress peeraddr)
+    return ()
