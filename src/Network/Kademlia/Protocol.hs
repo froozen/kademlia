@@ -16,7 +16,6 @@ import qualified Data.ByteString.Char8 as C
 import Data.Word (Word8)
 import Data.List (foldl')
 
-import Network.Kademlia.Networking
 import Network.Kademlia.Types
 import Network.Kademlia.Protocol.Parsing
 

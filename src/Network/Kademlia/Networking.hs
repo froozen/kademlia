@@ -17,10 +17,11 @@ import Control.Concurrent (forkIO)
 import Control.Concurrent.Chan
 
 import Network.Kademlia.Types
+import Network.Kademlia.Protocol
 
 -- | Open a listening UDP socket on a specified port and return a channel
---   delivering the incoming messages
-openOn :: String -> IO (Chan (Peer, ByteString))
+--   delivering the incoming signals
+openOn :: (Id i, Read a) => String -> IO (Chan (Signal i a))
 openOn port = withSocketsDo $ do
     -- Get addr to bind to
     (serveraddr:_) <- getAddrInfo
@@ -38,12 +39,16 @@ openOn port = withSocketsDo $ do
     return chan
 
 -- | Function used with forkIO in 'openOn'
-listenOn :: Socket -> Chan (Peer, ByteString) -> IO ()
+listenOn :: (Id i, Read a) =>  Socket -> Chan (Signal i a) -> IO ()
 listenOn sock chan = forever $ do
     -- Read from socket
     (received, addr) <- recvFrom sock 1024
     -- Try to create peer
     peer <- toPeer addr
     case peer of
-        Just p  -> writeChan chan (p, received)
         Nothing -> return ()
+        Just p  ->
+            -- Try parsing the signal
+            case parse p received of
+                Left _    -> return ()
+                Right sig -> writeChan chan sig
