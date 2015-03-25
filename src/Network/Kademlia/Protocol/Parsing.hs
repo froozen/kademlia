@@ -21,26 +21,26 @@ import Network.Kademlia.Types
 
 type Parse = ExceptT String (State B.ByteString)
 
-parse :: (Read a) => B.ByteString -> Peer -> Either String (Signal a)
-parse bs peer = evalState (runExceptT $ parseSignal peer) bs
+parse :: (Read a, Id i) => Peer -> B.ByteString -> Either String (Signal i a)
+parse peer = evalState (runExceptT $ parseSignal peer)
 
 -- | Parses the parsable parts of a signal
-parseSignal :: (Read a) => Peer -> Parse (Signal a)
+parseSignal :: (Read a, Id i) => Peer -> Parse (Signal i a)
 parseSignal peer = do
     cId <- parseCommandId
     id <- parseId
     cmd <- parseCommand cId
     return $ Signal id peer cmd
 
--- | Parses an Id or Key
-parseId :: Parse Id
+-- | Parses an Id
+parseId :: (Id a) => Parse a
 parseId = do
     bs <- get
-    if B.length bs < idSize
-        then throwE "ByteString to short"
-        else do
-            put $ B.drop idSize bs
-            return $ B.take idSize bs
+    case fromBS bs of
+        Left err -> throwE err
+        Right (id, rest) -> do
+            put rest
+            return id
 
 -- | Parses a CommandId
 parseCommandId :: Parse Int
@@ -107,7 +107,7 @@ parseKBucket = do
         (\_ -> return [peer])
 
 -- | Parses the rest of a command corresponding to an id
-parseCommand :: (Read a) => Int -> Parse (Command a)
+parseCommand :: (Read a, Id i) => Int -> Parse (Command i a)
 parseCommand 0 = return PING
 parseCommand 1 = liftM2 STORE parseId parseRead
 parseCommand 2 = FIND_NODE `liftM` parseId

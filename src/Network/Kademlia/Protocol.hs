@@ -21,7 +21,7 @@ import Network.Kademlia.Types
 import Network.Kademlia.Protocol.Parsing
 
 -- | Retrieve the assigned protocolId
-commandId :: Command a -> Word8
+commandId :: Command i a -> Word8
 commandId PING             = 0
 commandId (STORE _ _)      = 1
 commandId (FIND_NODE _)    = 2
@@ -30,18 +30,18 @@ commandId (FIND_VALUE _)   = 4
 commandId (RETURN_VALUE _) = 5
 
 -- | Turn the command arguments into a ByteString
-commandArgs :: (Show a) => Command a -> B.ByteString
+commandArgs :: (Show a, Id i) => Command i a -> B.ByteString
 commandArgs PING              = B.empty
-commandArgs (STORE k v)       = k `B.append` C.pack (show v)
-commandArgs (FIND_NODE id)    = id
-commandArgs (FIND_VALUE k)    = k
+commandArgs (STORE k v)       = toBS k `B.append` C.pack (show v)
+commandArgs (FIND_NODE id)    = toBS id
+commandArgs (FIND_VALUE k)    = toBS k
 commandArgs (RETURN_VALUE v)  = C.pack $ show v
 commandArgs (RETURN_NODES kb) = foldl' B.append B.empty $ fmap peerToArg kb
     where peerToArg peer = C.pack $ peerHost peer ++ " " ++
                                     show (peerPort peer) ++ " "
 
 -- | Turn a command into a sendable ByteString
-serialize :: (Show a) => Id -> Command a -> B.ByteString
-serialize id command = cId `B.cons` id `B.append` args
+serialize :: (Show a, Id i) => i -> Command i a -> B.ByteString
+serialize id command = cId `B.cons` toBS id `B.append` args
     where cId  = commandId command
           args = commandArgs command

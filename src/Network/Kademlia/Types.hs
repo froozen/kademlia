@@ -10,9 +10,7 @@ module Network.Kademlia.Types
     ( Peer(..)
     , toPeer
     , KBucket
-    , Id
-    , Key
-    , idSize
+    , Id(..)
     , Signal(..)
     , Command(..)
     ) where
@@ -29,12 +27,10 @@ data Peer = Peer {
 -- | Aliases to make the code more readable by using the same names as the
 --   papers
 type KBucket = [Peer]
-type Id    = ByteString
-type Key   = Id
 
--- | A constant describing the length of an id
-idSize :: Int
-idSize = 32
+class Id a where
+    fromBS :: ByteString -> Either String (a, ByteString)
+    toBS :: a -> ByteString
 
 -- | Try to convert a SockAddr to a Peer
 toPeer :: SockAddr -> IO (Maybe Peer)
@@ -44,17 +40,17 @@ toPeer (SockAddrInet port host) = do
 toPeer _ = return Nothing
 
 -- | Representation of a protocl signal
-data Signal v = Signal {
-      peerId :: Id
+data Signal i v = Signal {
+      peerId :: i
     , peer :: Peer
-    , command :: Command v
-    } deriving (Show)
+    , command :: Command i v
+    } deriving (Show, Eq)
 
 -- | Representations of the different protocol commands
-data Command a = PING
-               | STORE        Key a
-               | FIND_NODE    Id
-               | RETURN_NODES KBucket
-               | FIND_VALUE   Key
-               | RETURN_VALUE a
-                 deriving (Eq, Show)
+data Command i a = PING
+                 | STORE        i a
+                 | FIND_NODE    i
+                 | RETURN_NODES KBucket
+                 | FIND_VALUE   i
+                 | RETURN_VALUE a
+                   deriving (Eq, Show)
