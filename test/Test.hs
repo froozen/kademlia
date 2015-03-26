@@ -9,6 +9,7 @@ the way it's supposed to.
 module Test where
 
 import Protocol
+import Networking
 
 import Test.QuickCheck as Q
 import Distribution.TestSuite as TS
@@ -26,4 +27,6 @@ runQuickCheck prop = do
 tests :: IO [Test]
 tests = return [ Test $ TestInstance (runQuickCheck parseCheck)
                                       "parseCheck" [] [] undefined
+               , Test $ TestInstance (runQuickCheck sendCheck)
+                                      "sendCheck" [] [] undefined
                ]

@@ -47,7 +47,7 @@ instance Arbitrary (Command IdType String) where
           return PING
         , liftM2 STORE arbitrary arbitrary
         , liftM FIND_NODE arbitrary
-        , liftM RETURN_NODES $ vectorOf 20 arbitrary
+        , liftM RETURN_NODES $ vectorOf 15 arbitrary
         , liftM FIND_VALUE arbitrary
         , liftM RETURN_VALUE arbitrary
         ]
