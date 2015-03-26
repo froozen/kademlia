@@ -16,6 +16,8 @@ import Control.Monad (liftM, liftM2)
 import Control.Monad.State
 import Control.Monad.Trans.Except
 import Text.Read (readMaybe)
+import Data.Word (Word8, Word16)
+import Data.Bits (shiftL)
 
 import Network.Kademlia.Types
 
@@ -89,13 +91,29 @@ parseInt = do
             put rest
             return n
 
+-- | Parses two Word8s from a ByteString into one Word16
+parseWord16 :: Parse Word16
+parseWord16 = do
+    bs <- get
+    if B.length bs < 2
+        then throwE "ByteString to short"
+        else do
+            let (words, rest) = B.splitAt 2 bs
+            put rest
+            return . joinWords . B.unpack $ words
+    where
+        joinWords [a, b] = (toWord16 a `shiftL` 8) + toWord16 b
+
+        toWord16 :: Word8 -> Word16
+        toWord16 = fromIntegral
+
 -- | Parses a peer's info
 parsePeer :: Parse Peer
 parsePeer = do
     skipSpaces
     host <- parseSplit ' '
     skipSpaces
-    port <- parseInt
+    port <- parseWord16
     return $ Peer (C.unpack host) (fromIntegral port)
 
 -- | Parses a trailing k-bucket

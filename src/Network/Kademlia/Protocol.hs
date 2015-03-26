@@ -12,7 +12,9 @@ module Network.Kademlia.Protocol
     ) where
 
 import qualified Data.ByteString as B
+import qualified Data.ByteString.Lazy as L
 import qualified Data.ByteString.Char8 as C
+import Data.ByteString.Builder (toLazyByteString, word16BE)
 import Data.Word (Word8)
 import Data.List (foldl')
 
@@ -36,8 +38,11 @@ commandArgs (FIND_NODE id)    = toBS id
 commandArgs (FIND_VALUE k)    = toBS k
 commandArgs (RETURN_VALUE v)  = C.pack $ show v
 commandArgs (RETURN_NODES kb) = foldl' B.append B.empty $ fmap peerToArg kb
-    where peerToArg peer = C.pack $ peerHost peer ++ " " ++
-                                    show (peerPort peer) ++ " "
+
+peerToArg :: Peer -> B.ByteString
+peerToArg peer = C.pack (peerHost peer ++ " ") `B.append` serializePort peer
+    where serializePort = B.concat . L.toChunks . toLazyByteString . word16BE
+                          . fromIntegral . peerPort
 
 -- | Turn a command into a sendable ByteString
 serialize :: (Show a, Id i) => i -> Command i a -> B.ByteString
