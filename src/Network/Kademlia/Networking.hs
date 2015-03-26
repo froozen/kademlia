@@ -7,7 +7,10 @@ Network.Kademlia.Networking implements all the UDP network functionality.
 
 module Network.Kademlia.Networking
     ( openOn
-    , sendTo
+    , recv
+    , send
+    , closeK
+    , KademliaHandle
     ) where
 
 -- Just to make sure I'll only use the ByteString functions
@@ -21,10 +24,16 @@ import Control.Concurrent.Chan
 import Network.Kademlia.Types
 import Network.Kademlia.Protocol
 
--- | Open a listening UDP socket on a specified port and return a channel
---   delivering the incoming signals
-openOn :: (Id i, Read a) => String -> IO (Chan (Signal i a))
-openOn port = withSocketsDo $ do
+-- | A handle to a UDP socket running the Kademlia connection
+data KademliaHandle i = KH {
+      kId :: i
+    , kSock :: Socket
+    }
+
+-- | Open a Kademlia connection on specified port and return a corresponding
+--   KademliaHandle
+openOn :: (Id i) => String -> i -> IO (KademliaHandle i)
+openOn port id = withSocketsDo $ do
     -- Get addr to bind to
     (serveraddr:_) <- getAddrInfo
                  (Just (defaultHints {addrFlags = [AI_PASSIVE]}))
@@ -34,36 +43,37 @@ openOn port = withSocketsDo $ do
     sock <- socket (addrFamily serveraddr) Datagram defaultProtocol
     bindSocket sock (addrAddress serveraddr)
 
-    -- Create channel and start listening
-    chan <- newChan
-    forkIO $ listenOn sock chan
+    -- Return the handle
+    return $ KH id sock
 
-    return chan
-
--- | Function used with forkIO in 'openOn'
-listenOn :: (Id i, Read a) =>  Socket -> Chan (Signal i a) -> IO ()
-listenOn sock chan = forever $ do
+-- | Receive a signal from the connection corresponding to the specified
+--   KademliaHandle
+recv :: (Id i, Read a) =>  KademliaHandle i -> IO (Signal i a)
+recv kh = withSocketsDo $ do
     -- Read from socket
-    (received, addr) <- S.recvFrom sock 1024
+    (received, addr) <- S.recvFrom (kSock kh) 1024
     -- Try to create peer
     peer <- toPeer addr
     case peer of
-        Nothing -> return ()
+        Nothing -> recv kh
         Just p  ->
             -- Try parsing the signal
             case parse p received of
-                Left _    -> return ()
-                Right sig -> writeChan chan sig
+                Left _    -> recv kh
+                Right sig -> return sig
 
--- | Send a Signal to a Peer
-sendTo :: (Id i, Show a) => Peer -> i -> Command i a -> IO ()
-sendTo (Peer host port) id sig = withSocketsDo $ do
+-- | Send a Signal to a Peer over the connection corresponding to the
+--   KademliaHandle
+send :: (Id i, Show a) => KademliaHandle i -> Peer -> Command i a -> IO ()
+send kh (Peer host port) sig = withSocketsDo $ do
     -- Get Peer's address
     (peeraddr:_) <- getAddrInfo Nothing (Just host)
                       (Just . show . fromIntegral $ port)
-    -- Create socket
-    sock <- socket (addrFamily peeraddr) Datagram defaultProtocol
 
     -- Send the signal
-    S.sendTo sock (serialize id sig) (addrAddress peeraddr)
+    S.sendTo (kSock kh) (serialize (kId kh) sig) (addrAddress peeraddr)
     return ()
+
+-- | Close the connection corresponding to a KademliaHandle
+closeK :: KademliaHandle i -> IO ()
+closeK kh = sClose $ kSock kh
