@@ -9,7 +9,6 @@ Netowrk.Kademlia codebase.
 module Network.Kademlia.Types
     ( Peer(..)
     , toPeer
-    , toSockAddr
     , KBucket
     , Serialize(..)
     , Signal(..)
@@ -40,12 +39,6 @@ toPeer (SockAddrInet port host) = do
     hostname <- inet_ntoa host
     return $ Just $ Peer hostname port
 toPeer _ = return Nothing
-
--- | Convert a Peer back to a SockAddr
-toSockAddr :: Peer -> IO SockAddr
-toSockAddr (Peer hostname port) = do
-    host <- inet_addr hostname
-    return $ SockAddrInet port host
 
 -- | Representation of a protocl signal
 data Signal i v = Signal {
