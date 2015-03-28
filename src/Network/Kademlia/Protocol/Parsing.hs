@@ -23,20 +23,20 @@ import Network.Kademlia.Types
 
 type Parse = ExceptT String (State B.ByteString)
 
-parse :: (Read a, Id i) => Peer -> B.ByteString -> Either String (Signal i a)
+parse :: (Serialize i, Serialize a) => Peer -> B.ByteString -> Either String (Signal i a)
 parse peer = evalState (runExceptT $ parseSignal peer)
 
 -- | Parses the parsable parts of a signal
-parseSignal :: (Read a, Id i) => Peer -> Parse (Signal i a)
+parseSignal :: (Serialize i, Serialize a) => Peer -> Parse (Signal i a)
 parseSignal peer = do
     cId <- parseCommandId
-    id <- parseId
+    id <- parseSerialize
     cmd <- parseCommand cId
     return $ Signal id peer cmd
 
--- | Parses an Id
-parseId :: (Id a) => Parse a
-parseId = do
+-- | Parses a Serialize
+parseSerialize :: (Serialize a) => Parse a
+parseSerialize = do
     bs <- get
     case fromBS bs of
         Left err -> throwE err
@@ -53,16 +53,6 @@ parseCommandId = do
         Just (id, rest) -> do
             put rest
             return $ fromIntegral id
-
--- | Parses a trailing Read instance
-parseRead :: (Read a) => Parse a
-parseRead = do
-    bs <- get
-    case readMaybe $ C.unpack bs of
-        Nothing -> throwE "Read failed"
-        Just r  -> do
-            put B.empty
-            return r
 
 -- | Splits after a certain character
 parseSplit :: Char -> Parse B.ByteString
@@ -126,11 +116,11 @@ parseKBucket = do
         (\_ -> return [peer])
 
 -- | Parses the rest of a command corresponding to an id
-parseCommand :: (Read a, Id i) => Int -> Parse (Command i a)
+parseCommand :: (Serialize i, Serialize a) => Int -> Parse (Command i a)
 parseCommand 0 = return PING
-parseCommand 1 = liftM2 STORE parseId parseRead
-parseCommand 2 = FIND_NODE `liftM` parseId
+parseCommand 1 = liftM2 STORE parseSerialize parseSerialize
+parseCommand 2 = FIND_NODE `liftM` parseSerialize
 parseCommand 3 = RETURN_NODES `liftM` parseKBucket
-parseCommand 4 = FIND_VALUE `liftM` parseId
-parseCommand 5 = RETURN_VALUE `liftM` parseRead
+parseCommand 4 = FIND_VALUE `liftM` parseSerialize
+parseCommand 5 = RETURN_VALUE `liftM` parseSerialize
 parseCommand _ = throwE "Invalid id"

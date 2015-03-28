@@ -1,9 +1,8 @@
-{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances, FlexibleInstances #-}
 
 {-|
 Module      : Types
 Description : Types and Generators needed for general testing
-
 -}
 
 module Types where
@@ -22,11 +21,18 @@ import Network.Kademlia.Types
 newtype IdType = IT { getBS :: B.ByteString } deriving (Eq, Show)
 
 -- A simple 32-byte ByteString
-instance Id IdType where
+instance Serialize IdType where
     toBS = getBS
     fromBS bs = if B.length bs >= 32
         then Right $ first IT . B.splitAt 32 $ bs
         else Left "ByteString to short."
+
+instance Serialize String where
+    toBS = C.pack . show
+    fromBS s =
+        case (reads :: ReadS String) . C.unpack $ s of
+            []               -> Left "Failed to parse string."
+            (result, rest):_ -> Right (result, C.pack rest)
 
 instance Arbitrary IdType where
     arbitrary = do
@@ -39,10 +45,11 @@ instance Arbitrary PortNumber where
 instance Arbitrary Peer where
     arbitrary = do
         host <- arbitrary `suchThat` \s -> ' ' `notElem` s && not (null s)
+                                           && length s < 20
         port <- arbitrary
         return $ Peer host port
 
-instance Arbitrary (Command IdType String) where
+instance (Arbitrary i, Arbitrary v) => Arbitrary (Command i v) where
     arbitrary = oneof [
           return PING
         , liftM2 STORE arbitrary arbitrary
@@ -52,6 +59,6 @@ instance Arbitrary (Command IdType String) where
         , liftM RETURN_VALUE arbitrary
         ]
 
-instance Arbitrary (Signal IdType String) where
+instance (Arbitrary i, Arbitrary v) => Arbitrary (Signal i v) where
     arbitrary = liftM3 Signal arbitrary arbitrary arbitrary
 

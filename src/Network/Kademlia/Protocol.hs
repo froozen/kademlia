@@ -31,12 +31,12 @@ commandId (FIND_VALUE _)   = 4
 commandId (RETURN_VALUE _) = 5
 
 -- | Turn the command arguments into a ByteString
-commandArgs :: (Show a, Id i) => Command i a -> B.ByteString
+commandArgs :: (Serialize i, Serialize a) => Command i a -> B.ByteString
 commandArgs PING              = B.empty
-commandArgs (STORE k v)       = toBS k `B.append` C.pack (show v)
+commandArgs (STORE k v)       = toBS k `B.append` toBS v
 commandArgs (FIND_NODE id)    = toBS id
 commandArgs (FIND_VALUE k)    = toBS k
-commandArgs (RETURN_VALUE v)  = C.pack $ show v
+commandArgs (RETURN_VALUE v)  = toBS v
 commandArgs (RETURN_NODES kb) = foldl' B.append B.empty $ fmap peerToArg kb
 
 peerToArg :: Peer -> B.ByteString
@@ -45,7 +45,7 @@ peerToArg peer = C.pack (peerHost peer ++ " ") `B.append` serializePort peer
                           . fromIntegral . peerPort
 
 -- | Turn a command into a sendable ByteString
-serialize :: (Show a, Id i) => i -> Command i a -> B.ByteString
+serialize :: (Serialize i, Serialize a) => i -> Command i a -> B.ByteString
 serialize id command = cId `B.cons` toBS id `B.append` args
     where cId  = commandId command
           args = commandArgs command

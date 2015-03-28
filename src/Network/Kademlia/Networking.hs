@@ -32,7 +32,7 @@ data KademliaHandle i = KH {
 
 -- | Open a Kademlia connection on specified port and return a corresponding
 --   KademliaHandle
-openOn :: (Id i) => String -> i -> IO (KademliaHandle i)
+openOn :: (Serialize i) => String -> i -> IO (KademliaHandle i)
 openOn port id = withSocketsDo $ do
     -- Get addr to bind to
     (serveraddr:_) <- getAddrInfo
@@ -48,7 +48,7 @@ openOn port id = withSocketsDo $ do
 
 -- | Receive a signal from the connection corresponding to the specified
 --   KademliaHandle
-recv :: (Id i, Read a) =>  KademliaHandle i -> IO (Signal i a)
+recv :: (Serialize i, Serialize a) =>  KademliaHandle i -> IO (Signal i a)
 recv kh = withSocketsDo $ do
     -- Read from socket
     (received, addr) <- S.recvFrom (kSock kh) 1024
@@ -64,7 +64,7 @@ recv kh = withSocketsDo $ do
 
 -- | Send a Signal to a Peer over the connection corresponding to the
 --   KademliaHandle
-send :: (Id i, Show a) => KademliaHandle i -> Peer -> Command i a -> IO ()
+send :: (Serialize i, Serialize a) => KademliaHandle i -> Peer -> Command i a -> IO ()
 send kh (Peer host port) sig = withSocketsDo $ do
     -- Get Peer's address
     (peeraddr:_) <- getAddrInfo Nothing (Just host)

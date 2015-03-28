@@ -11,7 +11,7 @@ module Network.Kademlia.Types
     , toPeer
     , toSockAddr
     , KBucket
-    , Id(..)
+    , Serialize(..)
     , Signal(..)
     , Command(..)
     ) where
@@ -29,7 +29,8 @@ data Peer = Peer {
 --   papers
 type KBucket = [Peer]
 
-class Id a where
+-- | A structure serializable into and parsable from a ByteString
+class Serialize a where
     fromBS :: ByteString -> Either String (a, ByteString)
     toBS :: a -> ByteString
 
