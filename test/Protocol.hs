@@ -19,8 +19,9 @@ import Types
 
 -- | A signal is the same as its serialized form parsed
 parseCheck :: Signal IdType String -> P.Result
-parseCheck s = test . parse (peer s) . serialize (peerId s) . command $ s
-    where test (Left err) = P.failed { P.reason = "Parsing failed: " ++ err }
+parseCheck s = test . parse (peer . source $ s) . serialize id . command $ s
+    where id = (nodeId . source $ s)
+          test (Left err) = P.failed { P.reason = "Parsing failed: " ++ err }
           test (Right s') = P.result {
                   P.ok = Just (s == s')
                 , P.reason = "Signals differ:\nIn:  " ++ show s ++ "\nOut: "

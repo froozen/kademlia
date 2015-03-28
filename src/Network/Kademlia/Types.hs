@@ -9,6 +9,7 @@ Netowrk.Kademlia codebase.
 module Network.Kademlia.Types
     ( Peer(..)
     , toPeer
+    , Node(..)
     , KBucket
     , Serialize(..)
     , Signal(..)
@@ -24,9 +25,15 @@ data Peer = Peer {
     , peerPort :: PortNumber
     } deriving (Eq, Ord, Show)
 
+-- | Representation of a Kademlia Node, containing a Peer and an Id
+data Node i = Node {
+      peer :: Peer
+    , nodeId :: i
+    } deriving (Eq, Ord, Show)
+
 -- | Aliases to make the code more readable by using the same names as the
 --   papers
-type KBucket = [Peer]
+type KBucket i = [Node i]
 
 -- | A structure serializable into and parsable from a ByteString
 class Serialize a where
@@ -42,8 +49,7 @@ toPeer _ = return Nothing
 
 -- | Representation of a protocl signal
 data Signal i v = Signal {
-      peerId :: i
-    , peer :: Peer
+      source :: Node i
     , command :: Command i v
     } deriving (Show, Eq)
 
@@ -51,7 +57,7 @@ data Signal i v = Signal {
 data Command i a = PING
                  | STORE        i a
                  | FIND_NODE    i
-                 | RETURN_NODES KBucket
+                 | RETURN_NODES (KBucket i)
                  | FIND_VALUE   i
                  | RETURN_VALUE a
                    deriving (Eq, Show)

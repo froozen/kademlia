@@ -32,7 +32,8 @@ parseSignal peer = do
     cId <- parseCommandId
     id <- parseSerialize
     cmd <- parseCommand cId
-    return $ Signal id peer cmd
+    let node = Node peer id
+    return $ Signal node cmd
 
 -- | Parses a Serialize
 parseSerialize :: (Serialize a) => Parse a
@@ -99,21 +100,23 @@ parseWord16 = do
         toWord16 :: Word8 -> Word16
         toWord16 = fromIntegral
 
--- | Parses a peer's info
-parsePeer :: Parse Peer
-parsePeer = do
+-- | Parses a Node's info
+parseNode :: (Serialize i) => Parse (Node i)
+parseNode = do
+    id <- parseSerialize
     host <- parseSplit ' '
     skipCharacter
     port <- parseWord16
-    return $ Peer (C.unpack host) (fromIntegral port)
+    let peer = Peer (C.unpack host) (fromIntegral port)
+    return $ Node peer id
 
 -- | Parses a trailing k-bucket
-parseKBucket :: Parse KBucket
+parseKBucket :: (Serialize i) => Parse (KBucket i)
 parseKBucket = do
-    peer <- parsePeer
+    node <- parseNode
     catchE
-        (liftM (peer:) parseKBucket)
-        (\_ -> return [peer])
+        (liftM (node:) parseKBucket)
+        (\_ -> return [node])
 
 -- | Parses the rest of a command corresponding to an id
 parseCommand :: (Serialize i, Serialize a) => Int -> Parse (Command i a)

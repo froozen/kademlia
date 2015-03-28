@@ -37,12 +37,15 @@ commandArgs (STORE k v)       = toBS k `B.append` toBS v
 commandArgs (FIND_NODE id)    = toBS id
 commandArgs (FIND_VALUE k)    = toBS k
 commandArgs (RETURN_VALUE v)  = toBS v
-commandArgs (RETURN_NODES kb) = foldl' B.append B.empty $ fmap peerToArg kb
+commandArgs (RETURN_NODES kb) = foldl' B.append B.empty $ fmap nodeToArg kb
 
-peerToArg :: Peer -> B.ByteString
-peerToArg peer = C.pack (peerHost peer ++ " ") `B.append` serializePort peer
-    where serializePort = B.concat . L.toChunks . toLazyByteString . word16BE
-                          . fromIntegral . peerPort
+nodeToArg :: (Serialize i) => Node i -> B.ByteString
+nodeToArg node = id `B.append` C.pack (host ++ " ") `B.append` port
+    where id = toBS . nodeId $ node
+          host = peerHost . peer $ node
+          port = toBinary . fromIntegral . peerPort . peer $ node
+          -- Converts a Word16 into a two character ByteString
+          toBinary = B.concat . L.toChunks . toLazyByteString . word16BE
 
 -- | Turn a command into a sendable ByteString
 serialize :: (Serialize i, Serialize a) => i -> Command i a -> B.ByteString

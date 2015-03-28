@@ -33,8 +33,8 @@ sendCheck = monadicIO $ do
     sig <- run $ (recv khB :: IO (Signal IdType String))
 
     assert $ command sig == cmd
-    assert $ peer sig == pA
-    assert $ peerId sig == idA
+    assert $ (peer . source $ sig) == pA
+    assert $ (nodeId . source $ sig) == idA
 
     run $ closeK khA
     run $ closeK khB

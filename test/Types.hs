@@ -60,5 +60,7 @@ instance (Arbitrary i, Arbitrary v) => Arbitrary (Command i v) where
         ]
 
 instance (Arbitrary i, Arbitrary v) => Arbitrary (Signal i v) where
-    arbitrary = liftM3 Signal arbitrary arbitrary arbitrary
+    arbitrary = liftM2 Signal arbitrary arbitrary
 
+instance (Arbitrary i) => Arbitrary (Node i) where
+    arbitrary = liftM2 Node arbitrary arbitrary
