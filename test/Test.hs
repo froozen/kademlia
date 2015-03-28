@@ -29,4 +29,6 @@ tests = return [ Test $ TestInstance (runQuickCheck parseCheck)
                                       "parseCheck" [] [] undefined
                , Test $ TestInstance (runQuickCheck sendCheck)
                                       "sendCheck" [] [] undefined
+               , Test $ TestInstance (runQuickCheck lengthCheck)
+                                      "lengthCheck" [] [] undefined
                ]
