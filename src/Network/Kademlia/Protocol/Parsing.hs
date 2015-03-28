@@ -75,11 +75,13 @@ parseSplit c = do
             put rest
             return result
 
--- | Skips all spaces
-skipSpaces :: Parse ()
-skipSpaces = do
+-- | Skips one character
+skipCharacter :: Parse ()
+skipCharacter = do
     bs <- get
-    put $ C.dropWhile (==' ') bs
+    if B.null bs
+        then throwE "ByteString empty"
+        else put $ B.drop 1 bs
 
 -- | Parses an Int
 parseInt :: Parse Int
@@ -110,9 +112,8 @@ parseWord16 = do
 -- | Parses a peer's info
 parsePeer :: Parse Peer
 parsePeer = do
-    skipSpaces
     host <- parseSplit ' '
-    skipSpaces
+    skipCharacter
     port <- parseWord16
     return $ Peer (C.unpack host) (fromIntegral port)
 
