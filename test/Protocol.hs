@@ -11,14 +11,19 @@ module Protocol
     ) where
 
 import Test.QuickCheck
+import qualified Test.QuickCheck.Property as P
 
 import Network.Kademlia.Types
 import Network.Kademlia.Protocol
 import Types
 
 -- | A signal is the same as its serialized form parsed
-parseCheck :: Signal IdType String -> Bool
+parseCheck :: Signal IdType String -> P.Result
 parseCheck s = test . parse (peer s) . serialize (peerId s) . command $ s
-    where test (Left _) = False
-          test (Right s') = s == s'
+    where test (Left err) = P.failed { P.reason = "Parsing failed: " ++ err }
+          test (Right s') = P.result {
+                  P.ok = Just (s == s')
+                , P.reason = "Signals differ:\nIn:  " ++ show s ++ "\nOut: "
+                             ++ show s' ++ "\n"
+            }
 
