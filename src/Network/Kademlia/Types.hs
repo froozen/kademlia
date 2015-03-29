@@ -14,10 +14,13 @@ module Network.Kademlia.Types
     , Serialize(..)
     , Signal(..)
     , Command(..)
+    , BinaryStructure(..)
+    , toBinaryStructure
     ) where
 
 import Network.Socket (SockAddr(..), PortNumber, inet_ntoa, inet_addr)
-import Data.ByteString (ByteString)
+import qualified Data.ByteString as B (ByteString, foldr)
+import Data.Bits (testBit)
 
 -- | Representation of an UDP peer
 data Peer = Peer {
@@ -37,8 +40,16 @@ type KBucket i = [Node i]
 
 -- | A structure serializable into and parsable from a ByteString
 class Serialize a where
-    fromBS :: ByteString -> Either String (a, ByteString)
-    toBS :: a -> ByteString
+    fromBS :: B.ByteString -> Either String (a, B.ByteString)
+    toBS :: a -> B.ByteString
+
+-- | A Structure made up of bits, represented as a list of Bools
+type BinaryStructure = [Bool]
+
+-- | Converts a Serialize into a BinaryStructure
+toBinaryStructure :: (Serialize a) => a -> BinaryStructure
+toBinaryStructure s = B.foldr (\w bits -> convert w ++ bits) [] $ toBS s
+    where convert w = foldr (\i bits -> testBit w i : bits) [] [0..7]
 
 -- | Try to convert a SockAddr to a Peer
 toPeer :: SockAddr -> IO (Maybe Peer)
