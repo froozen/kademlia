@@ -19,7 +19,7 @@ Test-Suite library-test
   type:                exitcode-stdio-1.0
   main-is:             Test.hs
   hs-source-dirs:      test
-  other-modules:       Protocol, Networking, TestTypes
+  other-modules:       Protocol, Networking, TestTypes, Types
   default-language:    Haskell2010
   build-depends:       base, tasty >= 0.10.1, tasty-quickcheck >= 0.8.3.2, QuickCheck >= 2.4, network >= 2.6, mtl >= 2.2.1, transformers >= 0.4.2.0,
                        Cabal >= 1.18.5, bytestring >= 0.10.4.0, kademlia

@@ -13,6 +13,7 @@ import Test.Tasty.QuickCheck as QC
 
 import Protocol
 import Networking
+import Types
 
 main = defaultMain tests
 
@@ -23,4 +24,5 @@ quickCheckTests = testGroup "QuickCheck Tests" [
       QC.testProperty "parseCheck" parseCheck
     , QC.testProperty "sendCheck" sendCheck
     , QC.testProperty "lengthCheck" lengthCheck
+    , QC.testProperty "toBinaryStructureCheck" toBinaryStructureCheck
     ]
