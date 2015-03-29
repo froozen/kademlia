@@ -17,7 +17,7 @@ import qualified Test.QuickCheck.Property as P
 import qualified Data.ByteString as B
 import Network.Kademlia.Types
 import Network.Kademlia.Protocol
-import Types
+import TestTypes
 
 -- | A signal is the same as its serialized form parsed
 parseCheck :: Signal IdType String -> P.Result

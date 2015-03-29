@@ -14,7 +14,7 @@ import Network.Kademlia.Networking
 import Network.Kademlia.Types
 import qualified Data.ByteString.Char8 as C
 
-import Types
+import TestTypes
 
 -- | Make sure sending and receiving works
 sendCheck = monadicIO $ do
