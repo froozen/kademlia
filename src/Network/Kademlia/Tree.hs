@@ -19,11 +19,10 @@ module Network.Kademlia.Tree
 import Network.Kademlia.Types
 import Data.List (deleteBy, find)
 import Prelude hiding (lookup)
+import Control.Arrow (second)
 
 -- | Type used for building the Node Storage Tree
-data NodeTree i =
-      TreeNode (NodeTree i) Bool (KBucket i)
-    | End
+type NodeTree i = [(Bool, KBucket i)]
 
 -- | Apply a function to the KBucket a Node with a given Id would be in
 applyTo :: (Serialize i, Eq i) =>
@@ -33,35 +32,34 @@ applyTo :: (Serialize i, Eq i) =>
         -> i                -- ^ Position to apply at
         -> a
 applyTo f end tree id = go tree $ toByteStruct id
-    where go End _ = end
-          go (TreeNode next bit bucket) (b:bs)
-            | b == bit  = go next bs
+    where go [] _ = end
+          go ((bit, bucket):rest) (b:bs)
+            | bit == b  = go rest bs
             | otherwise = f bucket
 
 -- | Modify a NodeTree at the position a Node with a given Id would have
-modifyTree :: (Serialize i, Eq i) =>
-              (NodeTree i -> NodeTree i) -- ^ Function to apply to
-                                         --   corresponding TreeNode
-           -> NodeTree i                 -- ^ NodeTree to modify
-           -> i                          -- ^ Position to modify at
-           -> NodeTree i
-modifyTree f tree id = go tree $ toByteStruct id
-    where go End _ = End
-          go this@(TreeNode next bit bucket) (b:bs)
-            | b == bit  = TreeNode (go next bs) bit bucket
-            | otherwise = f this
+modifyTreeAt :: (Serialize i, Eq i) =>
+                ((Bool, KBucket i) -> (Bool, KBucket i))
+                -- ^ Function to apply to corresponding TreeNode
+             -> NodeTree i -- ^ NodeTree to modify
+             -> i          -- ^ Position to modify at
+             -> NodeTree i
+modifyTreeAt f tree id = go tree $ toByteStruct id
+    where go [] _ = []
+          go (pair@(bit, bucket):rest) (b:bs)
+            | bit == b  = pair : go rest bs
+            | otherwise = f pair : rest
 
 -- | Create a NodeTree corresponding to the Owner-Node's Id
 create :: (Serialize i) => i -> NodeTree i
-create id = foldr assemble End $ toByteStruct id
-    where assemble bit tree = TreeNode tree bit []
+create id = zip (toByteStruct id) (repeat [])
 
 -- | Insert a node into a NodeTree
 insert :: (Serialize i, Eq i) => NodeTree i -> Node i -> NodeTree i
-insert tree node = modifyTree f tree $ nodeId node
-    where f this@(TreeNode next bit bucket)
-            | node `notElem` bucket = TreeNode next bit (node:bucket)
-            | otherwise = this
+insert tree node = modifyTreeAt f tree $ nodeId node
+    where f pair@(bit, bucket)
+            | node `notElem` bucket = (bit, node:bucket)
+            | otherwise = pair
 
 -- | Lookup a node within a NodeTree
 lookup :: (Serialize i, Eq i) => NodeTree i -> i -> Maybe (Node i)
@@ -70,9 +68,8 @@ lookup tree id = applyTo f Nothing tree id
 
 -- | Delete a Node corresponding to a supplied Id from a NodeTree
 delete :: (Serialize i, Eq i) => NodeTree i -> i -> NodeTree i
-delete tree id = modifyTree f tree id
-    where f (TreeNode next bit bucket) =
-            TreeNode next bit $ filter (idMatches id) bucket
+delete tree id = modifyTreeAt f tree id
+    where f = second $ filter (idMatches id)
 
 -- | Helper function used for KBucket manipulation
 idMatches :: (Eq i) => i -> Node i -> Bool
