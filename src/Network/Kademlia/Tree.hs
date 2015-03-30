@@ -40,10 +40,10 @@ applyTo f end tree id = go tree $ toByteStruct id
 
 -- | Modify a NodeTree at the position a Node with a given Id would have
 modifyTree :: (Serialize i, Eq i) =>
-           -- | Function to apply to corresponding TreeNode
-              (NodeTree i -> NodeTree i)
-           -> NodeTree i             -- ^ NodeTree to modify
-           -> i                      -- ^ Position to modify at
+              (NodeTree i -> NodeTree i) -- ^ Function to apply to
+                                         --   corresponding TreeNode
+           -> NodeTree i                 -- ^ NodeTree to modify
+           -> i                          -- ^ Position to modify at
            -> NodeTree i
 modifyTree f tree id = go tree $ toByteStruct id
     where go End _ = End

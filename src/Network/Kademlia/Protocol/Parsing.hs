@@ -23,6 +23,9 @@ import Network.Kademlia.Types
 
 type Parse = ExceptT String (State B.ByteString)
 
+-- | Parse a signal from a ByteString
+--
+--   (This needs to be supplied a Peer, to be able to create a complete Signal)
 parse :: (Serialize i, Serialize a) => Peer -> B.ByteString -> Either String (Signal i a)
 parse peer = evalState (runExceptT $ parseSignal peer)
 
