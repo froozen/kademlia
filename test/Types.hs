@@ -16,10 +16,10 @@ import Data.Bits (testBit)
 import TestTypes
 import Network.Kademlia.Types
 
--- | Checks wether toBinaryStructure converts corretctly
-toBinaryStructureCheck :: IdType -> P.Result
-toBinaryStructureCheck id = P.result { P.ok = Just ok }
-    where converted = toBinaryStructure id
+-- | Checks wether toByteStruct converts corretctly
+toByteStructCheck :: IdType -> P.Result
+toByteStructCheck id = P.result { P.ok = Just ok }
+    where converted = toByteStruct id
           words = B.unpack . toBS $ id
           ok = foldl foldingFunc True [0..length converted - 1]
           foldingFunc b i = b && (converted !! i == access words i)

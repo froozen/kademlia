@@ -14,8 +14,8 @@ module Network.Kademlia.Types
     , Serialize(..)
     , Signal(..)
     , Command(..)
-    , BinaryStructure(..)
-    , toBinaryStructure
+    , ByteStruct(..)
+    , toByteStruct
     ) where
 
 import Network.Socket (SockAddr(..), PortNumber, inet_ntoa, inet_addr)
@@ -44,11 +44,11 @@ class Serialize a where
     toBS :: a -> B.ByteString
 
 -- | A Structure made up of bits, represented as a list of Bools
-type BinaryStructure = [Bool]
+type ByteStruct = [Bool]
 
--- | Converts a Serialize into a BinaryStructure
-toBinaryStructure :: (Serialize a) => a -> BinaryStructure
-toBinaryStructure s = B.foldr (\w bits -> convert w ++ bits) [] $ toBS s
+-- | Converts a Serialize into a ByteStruct
+toByteStruct :: (Serialize a) => a -> ByteStruct
+toByteStruct s = B.foldr (\w bits -> convert w ++ bits) [] $ toBS s
     where convert w = foldr (\i bits -> testBit w i : bits) [] [0..7]
 
 -- | Try to convert a SockAddr to a Peer

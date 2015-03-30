@@ -15,7 +15,6 @@ import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as C
 import Network.Socket (PortNumber)
 import Data.Word(Word16)
-import Data.Bits (testBit)
 
 import Network.Kademlia.Types
 

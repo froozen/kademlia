@@ -24,5 +24,5 @@ quickCheckTests = testGroup "QuickCheck Tests" [
       QC.testProperty "parseCheck" parseCheck
     , QC.testProperty "sendCheck" sendCheck
     , QC.testProperty "lengthCheck" lengthCheck
-    , QC.testProperty "toBinaryStructureCheck" toBinaryStructureCheck
+    , QC.testProperty "toByteStructCheck" toByteStructCheck
     ]
