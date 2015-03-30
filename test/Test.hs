@@ -11,9 +11,9 @@ module Main where
 import Test.Tasty
 import Test.Tasty.QuickCheck as QC
 
+import Types
 import Protocol
 import Networking
-import Types
 import Tree
 
 main = defaultMain tests
@@ -21,11 +21,33 @@ main = defaultMain tests
 tests :: TestTree
 tests = testGroup "Tests" [quickCheckTests]
 
-quickCheckTests = testGroup "QuickCheck Tests" [
-      QC.testProperty "parseCheck" parseCheck
-    , QC.testProperty "sendCheck" sendCheck
-    , QC.testProperty "lengthCheck" lengthCheck
-    , QC.testProperty "toByteStructCheck" toByteStructCheck
-    , QC.testProperty "insertCheck" insertCheck
-    , QC.testProperty "deleteCheck" deleteCheck
+quickCheckTests = testGroup "QuickCheck" [
+      typeChecks
+    , protocolChecks
+    , networkingChecks
+    , treeChecks
+    ]
+
+typeChecks = testGroup "Network.Kademlia.Types" [
+      QC.testProperty "ByteStruct conversion works"
+         toByteStructCheck
+    ]
+
+protocolChecks = testGroup "Network.Kademlia.Protocol" [
+      QC.testProperty "Protocol Serializing and Parsing works"
+         parseCheck
+    , QC.testProperty "Protocol messages are within the max UDP packet size"
+         lengthCheck
+    ]
+
+networkingChecks = testGroup "Network.Kademlia.Networking" [
+      QC.testProperty "Sending and Receiving works"
+         sendCheck
+    ]
+
+treeChecks = testGroup "Network.Kademlia.Tree" [
+      QC.testProperty "Inserting into the Tree works"
+         insertCheck
+    , QC.testProperty "Deleting from the Tree works"
+         deleteCheck
     ]
