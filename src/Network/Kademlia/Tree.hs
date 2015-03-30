@@ -19,10 +19,21 @@ module Network.Kademlia.Tree
 import Network.Kademlia.Types
 import Data.List (deleteBy, find)
 import Prelude hiding (lookup)
-import Control.Arrow (second)
+import Control.Arrow (first, second)
 
 -- | Type used for building the Node Storage Tree
 type NodeTree i = [(Bool, KBucket i)]
+
+-- | Structure used for easier modification of the NodeTree
+type Zipper i = (NodeTree i, NodeTree i)
+
+-- | Move the Zipper along an Id
+seek :: (Serialize i) => NodeTree i -> i -> Zipper i
+seek tree id = go tree $ toByteStruct id
+    where go [] _ = ([], [])
+          go (pair@(bit, bucket):rest) (b:bs)
+            | bit == b  = first (pair:) $ go rest bs
+            | otherwise = ([], pair:rest)
 
 -- | Apply a function to the KBucket a Node with a given Id would be in
 applyTo :: (Serialize i, Eq i) =>
@@ -31,11 +42,9 @@ applyTo :: (Serialize i, Eq i) =>
         -> NodeTree i       -- ^ NodeTree to apply to
         -> i                -- ^ Position to apply at
         -> a
-applyTo f end tree id = go tree $ toByteStruct id
-    where go [] _ = end
-          go ((bit, bucket):rest) (b:bs)
-            | bit == b  = go rest bs
-            | otherwise = f bucket
+applyTo f end tree id = case seek tree id of
+        (_, [])            -> end
+        (_, (_, bucket):_) -> f bucket
 
 -- | Modify a NodeTree at the position a Node with a given Id would have
 modifyTreeAt :: (Serialize i, Eq i) =>
@@ -44,11 +53,9 @@ modifyTreeAt :: (Serialize i, Eq i) =>
              -> NodeTree i -- ^ NodeTree to modify
              -> i          -- ^ Position to modify at
              -> NodeTree i
-modifyTreeAt f tree id = go tree $ toByteStruct id
-    where go [] _ = []
-          go (pair@(bit, bucket):rest) (b:bs)
-            | bit == b  = pair : go rest bs
-            | otherwise = f pair : rest
+modifyTreeAt f tree id = case seek tree id of
+        (beg, [])       -> beg
+        (beg, pair:end) -> beg ++ f pair : end
 
 -- | Create a NodeTree corresponding to the Owner-Node's Id
 create :: (Serialize i) => i -> NodeTree i
