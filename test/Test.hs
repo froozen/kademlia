@@ -29,8 +29,10 @@ quickCheckTests = testGroup "QuickCheck" [
     ]
 
 typeChecks = testGroup "Network.Kademlia.Types" [
-      QC.testProperty "ByteStruct conversion works"
+      QC.testProperty "ByteString to ByteStruct conversion works"
          toByteStructCheck
+    , QC.testProperty "ByteStruct to ByteString conversion works"
+         fromByteStructCheck
     ]
 
 protocolChecks = testGroup "Network.Kademlia.Protocol" [

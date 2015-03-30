@@ -16,11 +16,12 @@ module Network.Kademlia.Types
     , Command(..)
     , ByteStruct(..)
     , toByteStruct
+    , fromByteStruct
     ) where
 
 import Network.Socket (SockAddr(..), PortNumber, inet_ntoa, inet_addr)
-import qualified Data.ByteString as B (ByteString, foldr)
-import Data.Bits (testBit)
+import qualified Data.ByteString as B (ByteString, foldr, pack)
+import Data.Bits (testBit, setBit, zeroBits)
 
 -- | Representation of an UDP peer
 data Peer = Peer {
@@ -50,6 +51,18 @@ type ByteStruct = [Bool]
 toByteStruct :: (Serialize a) => a -> ByteStruct
 toByteStruct s = B.foldr (\w bits -> convert w ++ bits) [] $ toBS s
     where convert w = foldr (\i bits -> testBit w i : bits) [] [0..7]
+
+-- | Convert a ByteStruct back to its ByteString form
+fromByteStruct :: ByteStruct -> B.ByteString
+fromByteStruct bs = B.pack words
+    where words = foldr (\i ws -> createWord i : ws) [] indexes
+          indexes = [0..(length bs `div` 8) -1]
+          createWord i = let pos = i * 8
+                         in foldr changeBit zeroBits [pos..pos+7]
+
+          changeBit i w = if bs !! i
+                then setBit w (i `mod` 8)
+                else w
 
 -- | Try to convert a SockAddr to a Peer
 toPeer :: SockAddr -> IO (Maybe Peer)

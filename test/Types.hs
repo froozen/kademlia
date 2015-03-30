@@ -17,10 +17,13 @@ import TestTypes
 import Network.Kademlia.Types
 
 -- | Checks wether toByteStruct converts corretctly
-toByteStructCheck :: IdType -> P.Result
-toByteStructCheck id = P.result { P.ok = Just ok }
+toByteStructCheck :: IdType -> Bool
+toByteStructCheck id = foldl foldingFunc True [0..length converted - 1]
     where converted = toByteStruct id
           words = B.unpack . toBS $ id
-          ok = foldl foldingFunc True [0..length converted - 1]
           foldingFunc b i = b && (converted !! i == access words i)
           access ws i = testBit (ws !! (i `div` 8)) (i `mod` 8)
+
+-- | Checks wether fromByteStruct converts corretctly
+fromByteStructCheck :: IdType -> Bool
+fromByteStructCheck id = toBS id == (fromByteStruct . toByteStruct $ id)
