@@ -14,6 +14,7 @@ import Test.Tasty.QuickCheck as QC
 import Protocol
 import Networking
 import Types
+import Tree
 
 main = defaultMain tests
 
@@ -25,4 +26,6 @@ quickCheckTests = testGroup "QuickCheck Tests" [
     , QC.testProperty "sendCheck" sendCheck
     , QC.testProperty "lengthCheck" lengthCheck
     , QC.testProperty "toByteStructCheck" toByteStructCheck
+    , QC.testProperty "insertCheck" insertCheck
+    , QC.testProperty "deleteCheck" deleteCheck
     ]
