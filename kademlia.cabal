@@ -1,26 +1,40 @@
 name:                kademlia
 version:             0.1.0.0
 synopsis:            An implementation of the Kademlia DHT Protocol
+description:         An implementation of the Kademlia DHT Protocol
+category:            Network
+
 license:             BSD3
 license-file:        LICENSE
-author:              fro_ozen
-maintainer:          fro_ozen@gmx.de
-category:            Network
 build-type:          Simple
 cabal-version:       >=1.10
 
+author:              fro_ozen
+maintainer:          fro_ozen@gmx.de
+homepage:            https://github.com/froozen/kademlia
+bug-reports:         https://github.com/froozen/kademlia/issues
+
+source-repository head
+    type:       git
+    location:   https://github.com/froozen/kademlia.git
+
 library
-  exposed-modules:     Network.Kademlia, Network.Kademlia.Networking, Network.Kademlia.Types, Network.Kademlia.Protocol, 
-                       Network.Kademlia.Protocol.Parsing, Network.Kademlia.Tree, Network.Kademlia.Instance
-  build-depends:       base >=4.7 && <4.8, network >=2.6 && <2.7, bytestring >=0.10 && <0.11, mtl >=2.2.1, transformers >=0.3.3
+  exposed-modules:     Network.Kademlia, Network.Kademlia.Networking,
+                       Network.Kademlia.Types, Network.Kademlia.Protocol,
+                       Network.Kademlia.Protocol.Parsing, Network.Kademlia.Tree,
+                       Network.Kademlia.Instance
+  build-depends:       base >=4.7 && <4.8, network >=2.6 && <2.7, mtl >=2.2.1,
+                       bytestring >=0.10 && <0.11, transformers >=0.3.3
   hs-source-dirs:      src
   default-language:    Haskell2010
 
-Test-Suite library-test
+test-suite library-test
   type:                exitcode-stdio-1.0
   main-is:             Test.hs
   hs-source-dirs:      test
   other-modules:       Protocol, Networking, TestTypes, Types, Tree
   default-language:    Haskell2010
-  build-depends:       base, tasty >= 0.10.1, tasty-quickcheck >= 0.8.3.2, QuickCheck >= 2.4, network >= 2.6, mtl >= 2.2.1, transformers >= 0.4.2.0,
-                       Cabal >= 1.18.5, bytestring >= 0.10.4.0, kademlia
+  build-depends:       base, tasty >= 0.10.1, tasty-quickcheck >= 0.8.3.2,
+                       QuickCheck >= 2.4, network >= 2.6, mtl >= 2.2.1,
+                       transformers >= 0.4.2.0, Cabal >= 1.18.5,
+                       bytestring >= 0.10.4.0, kademlia
