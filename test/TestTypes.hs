@@ -18,7 +18,7 @@ import Data.Word(Word16)
 
 import Network.Kademlia.Types
 
-newtype IdType = IT { getBS :: B.ByteString } deriving (Eq, Show)
+newtype IdType = IT { getBS :: B.ByteString } deriving (Eq, Show, Ord)
 
 -- A simple 32-byte ByteString
 instance Serialize IdType where

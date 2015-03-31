@@ -52,4 +52,8 @@ treeChecks = testGroup "Network.Kademlia.Tree" [
          insertCheck
     , QC.testProperty "Deleting from the Tree works"
          deleteCheck
+    , QC.testProperty "Splitting works as expected"
+         splitCheck
+    , QC.testProperty "Buckets are within the size limit"
+         bucketSizeCheck
     ]
