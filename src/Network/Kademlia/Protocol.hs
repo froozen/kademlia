@@ -2,7 +2,7 @@
 Module      : Network.Kademlia.Protocol
 Description : Implementation of the actual protocol
 
-Netowrk.Kademlia.Protocol implements the parsing and serialisation of
+Network.Kademlia.Protocol implements the parsing and serialisation of
 ByteStrings into 'Protocol'-Values.
 -}
 

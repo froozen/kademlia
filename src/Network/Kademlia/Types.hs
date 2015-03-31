@@ -3,7 +3,7 @@ Module      : Network.Kademlia.Types
 Description : Definitions of a few types
 
 Network.Kademlia.Types defines a few types that are used throughout the
-Netowrk.Kademlia codebase.
+Network.Kademlia codebase.
 -}
 
 module Network.Kademlia.Types

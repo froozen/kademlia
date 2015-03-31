@@ -2,7 +2,7 @@
 Module      : Network.Kademlia.Protocol.Parsing
 Description : Implementation of the protocol parsing
 
-Netowrk.Kademlia.Protocol.Parsing implements the actual protocol parsing.
+Network.Kademlia.Protocol.Parsing implements the actual protocol parsing.
 
 It made sense to split it off Network.Kademlia.Protocol as it made both cleaner
 and more readable.
