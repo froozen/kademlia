@@ -43,17 +43,21 @@ instance (Arbitrary i, Eq i) => Arbitrary (NodeBunch i) where
         where individualIds s = length s == (length . cleared $ s)
               cleared = nubBy (\a b -> nodeId a == nodeId b)
 
--- | Check wether Splitting works in accordance with lookup
+withTree :: (T.NodeTree IdType -> [Node IdType] -> a) ->
+            NodeBunch IdType -> IdType -> a
+withTree f bunch id = f tree $ nodes bunch
+    where tree = foldr (flip T.insert) (T.create id) $ nodes bunch
+
 splitCheck :: NodeBunch IdType -> IdType -> P.Result
-splitCheck nb id = foldr foldingFunc result $ nodes nb
-    where tree = foldr (flip T.insert) (T.create id) $ nodes nb
+splitCheck = withTree f
+    where f tree nodes = foldr (foldingFunc tree) result $ nodes
           result = P.result { ok = Just True }
 
           ((_, Nothing):_) `contains` node = False
           ((_, Just b):xs) `contains` node = node `elem` b
                                               || xs `contains` node
 
-          foldingFunc node p
+          foldingFunc tree node p
             | ok p /= Just True = p
             | otherwise = p {
                   P.ok = Just $ lookupCheck tree node
@@ -65,9 +69,18 @@ splitCheck nb id = foldr foldingFunc result $ nodes nb
 
 -- | Make sure the bucket sizes end up correct
 bucketSizeCheck :: NodeBunch IdType -> IdType -> Bool
-bucketSizeCheck nb id = foldr foldingFunc True tree
-    where tree = foldr (flip T.insert) (T.create id) $ nodes nb
-
-          foldingFunc _ False        = False
+bucketSizeCheck = withTree $ \tree _ -> foldr foldingFunc True tree
+    where foldingFunc _ False        = False
           foldingFunc (_, Nothing) _ = True
           foldingFunc (_, Just b)  _ = length b <= 7
+
+-- | Make sure refreshed Nodes are actually refreshed
+refreshCheck :: NodeBunch IdType -> IdType -> Bool
+refreshCheck = withTree f
+    where f tree nodes = foldr foldingFunc True refreshed
+            where refreshed = T.refresh tree . nodeId $ node
+                  node = last nodes
+                  foldingFunc  _  False      = False
+                  foldingFunc (_, Nothing) _ = True
+                  foldingFunc (_, Just bk) _ = node `notElem` bk
+                                            || head bk == node

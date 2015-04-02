@@ -56,4 +56,6 @@ treeChecks = testGroup "Network.Kademlia.Tree" [
          splitCheck
     , QC.testProperty "Buckets are within the size limit"
          bucketSizeCheck
+    , QC.testProperty "Refreshing works as expected"
+         refreshCheck
     ]
