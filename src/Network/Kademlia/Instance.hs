@@ -16,6 +16,7 @@ import Control.Concurrent
 import Control.Monad (void, forever)
 import Control.Monad.Trans.State
 import Control.Monad.IO.Class (liftIO)
+import System.IO.Error (catchIOError)
 
 import Network.Kademlia.Networking
 import qualified Network.Kademlia.Tree as T
@@ -30,7 +31,11 @@ data KademliaInstance i a = KI {
 -- | Start the background process for a KademliaInstance
 start :: (Serialize i, Ord i, Serialize a) =>
     KademliaInstance i a -> IO ()
-start inst = void $ forkIO $ backgroundProcess inst
+start inst = void $ forkIO $
+        -- There is a very high chance that there will arise an Exception,
+        -- caused by closing the KademliaHandle in another thread.
+        -- This acts as the stopping signal for the background process.
+        backgroundProcess inst `catchIOError` \e -> return ()
 
 
 -- | The actual process running in the background
