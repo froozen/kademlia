@@ -86,15 +86,15 @@ insert tree node = case seek tree . nodeId $ node of
 
         -- Normal case
         (beg, (b, Just bucket):xs)
+            -- At least refresh the Node, as it has been active
+            | node `elem` bucket -> refresh tree . nodeId $ node
             -- The last bucket may always be split
             | full bucket && ends xs -> let new = split tree id
                                         in insert new node
             -- If the bucket is full and can't be split, the Node isn't inserted
             | full bucket -> tree
-            -- Make sure all nodes are unique
-            | node `notElem` bucket -> beg ++ (b, Just $ node:bucket):xs
-            -- At least refresh the node, as it has been active
-            | otherwise -> refresh tree . nodeId $ node
+            -- Just insert the Node
+            | otherwise -> beg ++ (b, Just $ node:bucket):xs
 
     where full b = length b >= 7
 
