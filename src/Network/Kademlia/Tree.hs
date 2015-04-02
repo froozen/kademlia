@@ -14,11 +14,13 @@ module Network.Kademlia.Tree
     , insert
     , lookup
     , delete
+    , refresh
     ) where
 
 import Network.Kademlia.Types
-import Data.List (deleteBy, find, elemIndex)
+import qualified Data.List as L (delete, find)
 import Prelude hiding (lookup, split)
+import Control.Monad (liftM)
 import Control.Arrow (first, second)
 
 -- | Type used for building the Node Storage Tree
@@ -64,6 +66,14 @@ modifyTreeAt f tree id = case seek tree id of
         (beg, [])       -> beg
         (beg, pair:end) -> beg ++ f pair : end
 
+-- | Modify the KBucket a node of a given Id would be in
+modifyKBucket :: (Serialize i, Eq i) =>
+                 (KBucket i -> KBucket i) -- ^ Modification funciton
+              -> NodeTree i -- ^ Node tree to modify
+              -> i          -- ^ Postition to modify at
+              -> NodeTree i
+modifyKBucket f = modifyTreeAt (second . fmap $ f)
+
 -- | Create a NodeTree corresponding to the Owner-Node's Id
 create :: (Serialize i) => i -> NodeTree i
 create id = zip (toByteStruct id) (repeat Nothing)
@@ -83,7 +93,8 @@ insert tree node = case seek tree . nodeId $ node of
             | full bucket -> tree
             -- Make sure all nodes are unique
             | node `notElem` bucket -> beg ++ (b, Just $ node:bucket):xs
-            | otherwise -> tree
+            -- At least refresh the node, as it has been active
+            | otherwise -> refresh tree . nodeId $ node
 
     where full b = length b >= 7
 
@@ -121,13 +132,20 @@ split tree id = let (begin, (b, Just bucket):xs) = seek tree id
 -- | Lookup a node within a NodeTree
 lookup :: (Serialize i, Eq i) => NodeTree i -> i -> Maybe (Node i)
 lookup tree id = applyTo f Nothing tree id
-    where f = find $ idMatches id
+    where f = L.find $ idMatches id
 
 -- | Delete a Node corresponding to a supplied Id from a NodeTree
 delete :: (Serialize i, Eq i) => NodeTree i -> i -> NodeTree i
-delete tree id = modifyTreeAt f tree id
-    where f = second . fmap $ filter g
-          g node = not . idMatches id $ node
+delete tree id = modifyKBucket f tree id
+    where f = filter $ not . idMatches id
+
+-- | Refresh the node corresponding to a supplied Id by placing it at the first
+--   index of it's KBucket
+refresh :: (Serialize i, Eq i) => NodeTree i -> i -> NodeTree i
+refresh tree id = modifyKBucket f tree id
+    where f bucket = case L.find (idMatches id) bucket of
+                Just node -> node : L.delete node bucket
+                _         -> bucket
 
 -- | Helper function used for KBucket manipulation
 idMatches :: (Eq i) => i -> Node i -> Bool
