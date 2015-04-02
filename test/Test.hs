@@ -10,16 +10,18 @@ module Main where
 
 import Test.Tasty
 import Test.Tasty.QuickCheck as QC
+import Test.Tasty.HUnit as HU
 
 import Types
 import Protocol
 import Networking
 import Tree
+import Instance
 
 main = defaultMain tests
 
 tests :: TestTree
-tests = testGroup "Tests" [quickCheckTests]
+tests = testGroup "Tests" [quickCheckTests, hUnitTests]
 
 quickCheckTests = testGroup "QuickCheck" [
       typeChecks
@@ -58,4 +60,13 @@ treeChecks = testGroup "Network.Kademlia.Tree" [
          bucketSizeCheck
     , QC.testProperty "Refreshing works as expected"
          refreshCheck
+    ]
+
+hUnitTests = testGroup "HUnit" [
+      instanceCases
+    ]
+
+instanceCases = testGroup "Network.Kademlia.Instance" [
+      HU.testCase "PINGs are automaticly handled"
+         handlesPingCheck
     ]
