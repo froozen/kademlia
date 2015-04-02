@@ -79,6 +79,7 @@ data Signal i v = Signal {
 
 -- | Representations of the different protocol commands
 data Command i a = PING
+                 | PONG
                  | STORE        i a
                  | FIND_NODE    i
                  | RETURN_NODES (KBucket i)

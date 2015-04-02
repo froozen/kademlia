@@ -124,9 +124,10 @@ parseKBucket = do
 -- | Parses the rest of a command corresponding to an id
 parseCommand :: (Serialize i, Serialize a) => Int -> Parse (Command i a)
 parseCommand 0 = return PING
-parseCommand 1 = liftM2 STORE parseSerialize parseSerialize
-parseCommand 2 = FIND_NODE `liftM` parseSerialize
-parseCommand 3 = RETURN_NODES `liftM` parseKBucket
-parseCommand 4 = FIND_VALUE `liftM` parseSerialize
-parseCommand 5 = RETURN_VALUE `liftM` parseSerialize
+parseCommand 1 = return PONG
+parseCommand 2 = liftM2 STORE parseSerialize parseSerialize
+parseCommand 3 = FIND_NODE `liftM` parseSerialize
+parseCommand 4 = RETURN_NODES `liftM` parseKBucket
+parseCommand 5 = FIND_VALUE `liftM` parseSerialize
+parseCommand 6 = RETURN_VALUE `liftM` parseSerialize
 parseCommand _ = throwE "Invalid id"

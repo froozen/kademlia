@@ -24,15 +24,17 @@ import Network.Kademlia.Protocol.Parsing
 -- | Retrieve the assigned protocolId
 commandId :: Command i a -> Word8
 commandId PING             = 0
-commandId (STORE _ _)      = 1
-commandId (FIND_NODE _)    = 2
-commandId (RETURN_NODES _) = 3
-commandId (FIND_VALUE _)   = 4
-commandId (RETURN_VALUE _) = 5
+commandId PONG             = 1
+commandId (STORE _ _)      = 2
+commandId (FIND_NODE _)    = 3
+commandId (RETURN_NODES _) = 4
+commandId (FIND_VALUE _)   = 5
+commandId (RETURN_VALUE _) = 6
 
 -- | Turn the command arguments into a ByteString
 commandArgs :: (Serialize i, Serialize a) => Command i a -> B.ByteString
 commandArgs PING              = B.empty
+commandArgs PONG              = B.empty
 commandArgs (STORE k v)       = toBS k `B.append` toBS v
 commandArgs (FIND_NODE id)    = toBS id
 commandArgs (FIND_VALUE k)    = toBS k

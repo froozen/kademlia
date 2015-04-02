@@ -52,6 +52,7 @@ instance Arbitrary Peer where
 instance (Arbitrary i, Arbitrary v) => Arbitrary (Command i v) where
     arbitrary = oneof [
           return PING
+        , return PONG
         , liftM2 STORE arbitrary arbitrary
         , liftM FIND_NODE arbitrary
         , liftM RETURN_NODES $ vectorOf 15 arbitrary
