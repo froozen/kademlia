@@ -57,4 +57,8 @@ backgroundProcess inst = forever . flip execStateT inst  $ do
 -- | Handles the different Kademlia Signals appropriately
 handleSignal :: (Serialize i, Serialize a) =>
     Signal i a -> StateT (KademliaInstance i a) IO ()
+-- Simply answer a PING with a PONG
+handleSignal (Signal (Node p _) PING) = do
+    h <- gets handle
+    liftIO $ send h p PONG
 handleSignal _ = return ()
