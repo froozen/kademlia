@@ -8,7 +8,6 @@ Tests specific to Network.Kademlia.Types.
 module Types where
 
 import Test.QuickCheck
-import qualified Test.QuickCheck.Property as P
 
 import qualified Data.ByteString as B
 import Data.Bits (testBit)

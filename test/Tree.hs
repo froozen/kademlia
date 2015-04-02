@@ -8,7 +8,6 @@ Tests specific to Network.Kademlia.Tree.
 module Tree where
 
 import Test.QuickCheck
-import Test.QuickCheck.Property as P
 
 import qualified Network.Kademlia.Tree as T
 import Network.Kademlia.Types
@@ -48,24 +47,20 @@ withTree :: (T.NodeTree IdType -> [Node IdType] -> a) ->
 withTree f bunch id = f tree $ nodes bunch
     where tree = foldr (flip T.insert) (T.create id) $ nodes bunch
 
-splitCheck :: NodeBunch IdType -> IdType -> P.Result
+splitCheck :: NodeBunch IdType -> IdType -> Property
 splitCheck = withTree f
-    where f tree nodes = foldr (foldingFunc tree) result $ nodes
-          result = P.result { ok = Just True }
+    where f tree nodes = conjoin . foldr (foldingFunc tree) [] $ nodes
 
           ((_, Nothing):_) `contains` node = False
           ((_, Just b):xs) `contains` node = node `elem` b
                                               || xs `contains` node
 
-          foldingFunc tree node p
-            | ok p /= Just True = p
-            | otherwise = p {
-                  P.ok = Just $ lookupCheck tree node
-                  -- There is the possibiliy that nodes weren't inserted because
-                  -- of full buckets.
-                                || not (tree `contains` node)
-                , P.reason = "Failed to find " ++ show node
-            }
+          foldingFunc tree node props = prop : props
+            where prop =
+                    counterexample ("Failed to find " ++ show node) $
+                  -- There is the possibiliy that nodes weren't inserted
+                  -- because of full buckets.
+                    lookupCheck tree node || not (tree `contains` node)
 
 -- | Make sure the bucket sizes end up correct
 bucketSizeCheck :: NodeBunch IdType -> IdType -> Bool
