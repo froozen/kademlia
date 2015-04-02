@@ -25,14 +25,14 @@ import Network.Kademlia.Types
 import Network.Kademlia.Protocol
 
 -- | A handle to a UDP socket running the Kademlia connection
-data KademliaHandle i = KH {
+data KademliaHandle i a = KH {
       kId :: i
     , kSock :: Socket
     }
 
 -- | Open a Kademlia connection on specified port and return a corresponding
 --   KademliaHandle
-openOn :: (Serialize i) => String -> i -> IO (KademliaHandle i)
+openOn :: (Serialize i) => String -> i -> IO (KademliaHandle i a)
 openOn port id = withSocketsDo $ do
     -- Get addr to bind to
     (serveraddr:_) <- getAddrInfo
@@ -48,7 +48,7 @@ openOn port id = withSocketsDo $ do
 
 -- | Receive a signal from the connection corresponding to the specified
 --   KademliaHandle
-recv :: (Serialize i, Serialize a) =>  KademliaHandle i -> IO (Signal i a)
+recv :: (Serialize i, Serialize a) =>  KademliaHandle i a -> IO (Signal i a)
 recv kh = withSocketsDo $ do
     -- Read from socket
     (received, addr) <- S.recvFrom (kSock kh) 1024
@@ -64,7 +64,7 @@ recv kh = withSocketsDo $ do
 
 -- | Send a Signal to a Peer over the connection corresponding to the
 --   KademliaHandle
-send :: (Serialize i, Serialize a) => KademliaHandle i -> Peer -> Command i a -> IO ()
+send :: (Serialize i, Serialize a) => KademliaHandle i a -> Peer -> Command i a -> IO ()
 send kh (Peer host port) sig = withSocketsDo $ do
     -- Get Peer's address
     (peeraddr:_) <- getAddrInfo Nothing (Just host)
@@ -75,5 +75,5 @@ send kh (Peer host port) sig = withSocketsDo $ do
     return ()
 
 -- | Close the connection corresponding to a KademliaHandle
-closeK :: KademliaHandle i -> IO ()
+closeK :: KademliaHandle i a -> IO ()
 closeK kh = sClose $ kSock kh
