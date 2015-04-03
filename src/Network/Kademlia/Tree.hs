@@ -90,7 +90,7 @@ insert tree node = case seek tree . nodeId $ node of
             -- At least refresh the Node, as it has been active
             | node `elem` bucket -> refresh tree . nodeId $ node
             -- The last bucket may always be split
-            | full bucket && ends xs -> let new = split tree id
+            | full bucket && ends xs -> let new = split tree . extractId $ tree
                                         in insert new node
             -- If the bucket is full and can't be split, the Node isn't inserted
             | full bucket -> tree
@@ -99,9 +99,10 @@ insert tree node = case seek tree . nodeId $ node of
 
     where full b = length b >= 7
 
-          -- Extract original Id from NodeTree
-          bs = foldr (\x id -> fst x:id) [] tree
-          id = let (Right (id, _)) = fromBS . fromByteStruct $ bs in id
+-- Extract original Id from NodeTree
+extractId :: (Serialize i) => NodeTree i -> i
+extractId tree = let (Right (id, _)) = fromBS . fromByteStruct $ bs in id
+    where bs = foldr (\x id -> fst x:id) [] tree
 
 -- | Split the last bucket
 --
