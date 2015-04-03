@@ -17,6 +17,7 @@ module Network.Kademlia.Types
     , ByteStruct(..)
     , toByteStruct
     , fromByteStruct
+    , distance
     ) where
 
 import Network.Socket (SockAddr(..), PortNumber, inet_ntoa, inet_addr)
@@ -63,6 +64,13 @@ fromByteStruct bs = B.pack words
           changeBit i w = if bs !! i
                 then setBit w (i `mod` 8)
                 else w
+
+-- Calculate the distance between two Ids, as specified in the Kademlia paper
+distance :: (Serialize i) => i -> i -> ByteStruct
+distance idA idB = let bsA = toByteStruct idA
+                       bsB = toByteStruct idB
+                   in  zipWith xor bsA bsB
+    where xor a b = not (a && b) && (a || b)
 
 -- | Try to convert a SockAddr to a Peer
 toPeer :: SockAddr -> IO (Maybe Peer)

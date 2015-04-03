@@ -172,12 +172,8 @@ findClosest tree id = case seek tree id of
             in map fst . take 7 . sort $ this ++ higher ++ lower
     where -- Create a list of tuples in the form of (Node, distance) in order
           -- to help sort them by distance
-          pack bk = zip bk $ map distance bk
-          -- The distance calculation desrcibed in the Kademlia paper
-          distance node = let bsA = toByteStruct id
-                              bsB = toByteStruct . nodeId $ node
-                          in zipWith xor bsA bsB
-          xor a b = not (a && b) && (a || b)
+          pack bk = zip bk $ map f bk
+          f = distance id . nodeId
 
           -- Pick the n closest Nodes from the tree
           next _ [] = []
