@@ -102,7 +102,7 @@ insert tree node = case seek tree . nodeId $ node of
 
 -- Extract original Id from NodeTree
 extractId :: (Serialize i) => NodeTree i -> i
-extractId tree = let (Right (id, _)) = fromBS . fromByteStruct $ bs in id
+extractId tree = fromByteStruct $ bs
     where bs = foldr (\x id -> fst x:id) [] tree
 
 -- | Split the last bucket
@@ -197,9 +197,7 @@ findClosest tree id n = case seek tree id of
           sort = L.sortBy $ \(_, a) (_, b) -> compare a b
 
           -- Change the first differing bit of idA to match idB
-          idA `alignedTo` idB = let bs = fromByteStruct . alignF idA $ idB
-                                    (Right (id, _)) = fromBS bs
-                                in id
+          idA `alignedTo` idB = fromByteStruct . alignF idA $ idB
           alignF = align `on` toByteStruct
           align [] [] = []
           align (a:as) (b:bs)

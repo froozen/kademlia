@@ -54,9 +54,11 @@ toByteStruct s = B.foldr (\w bits -> convert w ++ bits) [] $ toBS s
     where convert w = foldr (\i bits -> testBit w i : bits) [] [0..7]
 
 -- | Convert a ByteStruct back to its ByteString form
-fromByteStruct :: ByteStruct -> B.ByteString
-fromByteStruct bs = B.pack words
-    where words = foldr (\i ws -> createWord i : ws) [] indexes
+fromByteStruct :: (Serialize a) => ByteStruct -> a
+fromByteStruct bs = case fromBS s of
+                    (Right (converted, _)) -> converted
+                    (Left err) -> error $ "Failed to convert from ByteStruct: " ++ err
+    where s = B.pack . foldr (\i ws -> createWord i : ws) [] $ indexes
           indexes = [0..(length bs `div` 8) -1]
           createWord i = let pos = i * 8
                          in foldr changeBit zeroBits [pos..pos+7]

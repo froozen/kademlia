@@ -25,4 +25,4 @@ toByteStructCheck id = foldl foldingFunc True [0..length converted - 1]
 
 -- | Checks wether fromByteStruct converts corretctly
 fromByteStructCheck :: IdType -> Bool
-fromByteStructCheck id = toBS id == (fromByteStruct . toByteStruct $ id)
+fromByteStructCheck id = id == (fromByteStruct . toByteStruct $ id)
