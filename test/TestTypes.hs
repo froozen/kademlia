@@ -20,11 +20,11 @@ import Network.Kademlia.Types
 
 newtype IdType = IT { getBS :: B.ByteString } deriving (Eq, Show, Ord)
 
--- A simple 32-byte ByteString
+-- A simple 5-byte ByteString
 instance Serialize IdType where
     toBS = getBS
-    fromBS bs = if B.length bs >= 32
-        then Right $ first IT . B.splitAt 32 $ bs
+    fromBS bs = if B.length bs >= 5
+        then Right $ first IT . B.splitAt 5 $ bs
         else Left "ByteString to short."
 
 instance Serialize String where
@@ -36,7 +36,7 @@ instance Serialize String where
 
 instance Arbitrary IdType where
     arbitrary = do
-        str <- vectorOf 32 arbitrary
+        str <- vectorOf 5 arbitrary
         return $ IT $ C.pack str
 
 instance Arbitrary PortNumber where
