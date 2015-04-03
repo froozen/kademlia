@@ -52,13 +52,13 @@ backgroundProcess inst = forever . flip execStateT inst  $ do
     modify $ \inst -> inst { tree = T.insert (tree inst) node }
 
     -- Handle the signal
-    handleSignal sig
+    handleCommand (command sig) (peer . source $ sig)
 
--- | Handles the different Kademlia Signals appropriately
-handleSignal :: (Serialize i, Serialize a) =>
-    Signal i a -> StateT (KademliaInstance i a) IO ()
+-- | Handles the differendt Kademlia Commands appropriately
+handleCommand :: (Serialize i, Serialize a) =>
+    Command i a -> Peer -> StateT (KademliaInstance i a) IO ()
 -- Simply answer a PING with a PONG
-handleSignal (Signal (Node p _) PING) = do
+handleCommand PING peer = do
     h <- gets handle
-    liftIO $ send h p PONG
-handleSignal _ = return ()
+    liftIO $ send h peer PONG
+handleCommand _ _ = return ()
