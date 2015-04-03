@@ -89,7 +89,7 @@ findClosestCheck id = withTree f
                   where prop node = node `elem` treeClosest
                         text node = "Failed to find: " ++ show node
 
-                 treeClosest = T.findClosest tree id
+                 treeClosest = T.findClosest tree id 7
 
                  contained = filter contains nodes
                  contains node = (T.lookup tree . nodeId $ node) /= Nothing

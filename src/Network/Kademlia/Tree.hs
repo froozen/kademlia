@@ -23,6 +23,7 @@ import qualified Data.List as L (delete, find, sortBy)
 import Prelude hiding (lookup, split)
 import Control.Monad (liftM)
 import Control.Arrow (first, second)
+import Data.Function (on)
 
 -- | Type used for building the Node Storage Tree
 type NodeTree i = [(Bool, Maybe (KBucket i))]
@@ -152,25 +153,33 @@ refresh tree id = modifyKBucket f tree id
 -- | Find the k closest Nodes to a given Id
 --
 --   Uset to implemenet RETURN_NODES
-findClosest :: (Serialize i, Eq i) => NodeTree i -> i -> KBucket i
-findClosest tree id = case seek tree id of
+findClosest :: (Serialize i, Eq i) => NodeTree i -> i -> Int -> KBucket i
+findClosest tree id n = case seek tree id of
     -- The tree is empty
     (_, (_, Nothing):xs) -> []
 
     -- Normal case
     (beg, (_, Just bk):xs)
         -- The bucket contains enough Nodes on its own
-        | length bk == 7 -> bk
+        | length bk == n -> bk
         -- We need to retrieve Nodes from other buckets as well
         | otherwise -> let
-            this = pack bk
-            missing = 7 - length bk
-            -- Pick enough Nodes from the buckets higher and lower in the tree
-            -- hierarchy
-            higher = next missing $ reverse beg
-            lower = next missing xs
-            -- Return the ones closest to the supplied Id
-            in map fst . take 7 . sort $ this ++ higher ++ lower
+            missing = n - length bk
+            in if ends xs
+                    -- If it's the last one, take nodes from higher up in
+                    -- the hierarchy
+                    then let this = pack bk
+                             higher = next missing $ reverse beg
+                         in map fst . take n . sort $ this ++ higher
+                    -- Else retrieve the missing amount of Nodes by calling
+                    -- findClosest with an Id whose first differing bit doesn't
+                    -- differ.
+                    -- (Sounds complicated, but the tests prove that it actually
+                    -- works this way)
+                    else let treeId = extractId tree
+                             newId  = id `alignedTo` treeId
+                             other  = findClosest tree newId missing
+                         in bk ++ other
     where -- Create a list of tuples in the form of (Node, distance) in order
           -- to help sort them by distance
           pack bk = zip bk $ map f bk
@@ -186,6 +195,16 @@ findClosest tree id = case seek tree id of
             | otherwise = take n . sort . pack $ bk
 
           sort = L.sortBy $ \(_, a) (_, b) -> compare a b
+
+          -- Change the first differing bit of idA to match idB
+          idA `alignedTo` idB = let bs = fromByteStruct . alignF idA $ idB
+                                    (Right (id, _)) = fromBS bs
+                                in id
+          alignF = align `on` toByteStruct
+          align [] [] = []
+          align (a:as) (b:bs)
+            | a == b    = a : align as bs
+            | otherwise = b : as
 
 -- | Helper function used for KBucket manipulation
 idMatches :: (Eq i) => i -> Node i -> Bool
