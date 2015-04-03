@@ -15,10 +15,11 @@ module Network.Kademlia.Tree
     , lookup
     , delete
     , refresh
+    , findClosest
     ) where
 
 import Network.Kademlia.Types
-import qualified Data.List as L (delete, find)
+import qualified Data.List as L (delete, find, sortBy)
 import Prelude hiding (lookup, split)
 import Control.Monad (liftM)
 import Control.Arrow (first, second)
@@ -146,6 +147,48 @@ refresh tree id = modifyKBucket f tree id
     where f bucket = case L.find (idMatches id) bucket of
                 Just node -> node : L.delete node bucket
                 _         -> bucket
+
+-- | Find the k closest Nodes to a given Id
+--
+--   Uset to implemenet RETURN_NODES
+findClosest :: (Serialize i, Eq i) => NodeTree i -> i -> KBucket i
+findClosest tree id = case seek tree id of
+    -- The tree is empty
+    (_, (_, Nothing):xs) -> []
+
+    -- Normal case
+    (beg, (_, Just bk):xs)
+        -- The bucket contains enough Nodes on its own
+        | length bk == 7 -> bk
+        -- We need to retrieve Nodes from other buckets as well
+        | otherwise -> let
+            this = pack bk
+            missing = 7 - length bk
+            -- Pick enough Nodes from the buckets higher and lower in the tree
+            -- hierarchy
+            higher = next missing $ reverse beg
+            lower = next missing xs
+            -- Return the ones closest to the supplied Id
+            in map fst . take 7 . sort $ this ++ higher ++ lower
+    where -- Create a list of tuples in the form of (Node, distance) in order
+          -- to help sort them by distance
+          pack bk = zip bk $ map distance bk
+          -- The distance calculation desrcibed in the Kademlia paper
+          distance node = let bsA = toByteStruct id
+                              bsB = toByteStruct . nodeId $ node
+                          in zipWith xor bsA bsB
+          xor a b = not (a && b) && (a || b)
+
+          -- Pick the n closest Nodes from the tree
+          next _ [] = []
+          next n ((_, Nothing):xs) = next n xs
+          next n ((_, Just bk):xs)
+            | length bk == n = pack bk
+            | length bk <  n = pack bk ++ next (n - length bk) xs
+            -- Take the n closest Nodes
+            | otherwise = take n . sort . pack $ bk
+
+          sort = L.sortBy $ \(_, a) (_, b) -> compare a b
 
 -- | Helper function used for KBucket manipulation
 idMatches :: (Eq i) => i -> Node i -> Bool
