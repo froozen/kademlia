@@ -12,7 +12,7 @@ import Test.QuickCheck
 import qualified Network.Kademlia.Tree as T
 import Network.Kademlia.Types
 import Control.Monad (liftM)
-import Data.List (nubBy, foldl')
+import Data.List (nubBy, foldl', sortBy)
 
 import TestTypes
 
@@ -79,3 +79,22 @@ refreshCheck = withTree f
                   foldingFunc (_, Nothing) _ = True
                   foldingFunc (_, Just bk) _ = node `notElem` bk
                                             || head bk == node
+
+-- | Make sure findClosest returns the Node with the closest Ids of all nodes
+--   in the tree.
+findClosestCheck :: IdType -> NodeBunch IdType -> IdType -> Property
+findClosestCheck id = withTree f
+    where f tree nodes = conjoin . foldr g [] $ manualClosest
+           where g node props = counterexample (text node) (prop node):props
+                  where prop node = node `elem` treeClosest
+                        text node = "Failed to find: " ++ show node
+
+                 treeClosest = T.findClosest tree id
+
+                 contained = filter contains nodes
+                 contains node = (T.lookup tree . nodeId $ node) /= Nothing
+
+                 manualClosest = map fst . take 7 . sort $ packed
+                 packed = zip contained $ map distanceF contained
+                 distanceF = distance id . nodeId
+                 sort = sortBy $ \(_, a) (_, b) -> compare a b

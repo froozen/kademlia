@@ -60,6 +60,8 @@ treeChecks = testGroup "Network.Kademlia.Tree" [
          bucketSizeCheck
     , QC.testProperty "Refreshing works as expected"
          refreshCheck
+    , QC.testProperty "Finding closest works"
+         findClosestCheck
     ]
 
 hUnitTests = testGroup "HUnit" [
