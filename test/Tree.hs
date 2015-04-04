@@ -12,7 +12,7 @@ import Test.QuickCheck
 import qualified Network.Kademlia.Tree as T
 import Network.Kademlia.Types
 import Control.Monad (liftM)
-import Data.List (nubBy, foldl', sortBy)
+import Data.List (sortBy)
 
 import TestTypes
 
@@ -30,17 +30,6 @@ deleteCheck :: IdType -> Node IdType -> Bool
 deleteCheck id node = not . lookupCheck tree $ node
     where tree = T.delete origin . nodeId $ node
           origin = T.insert (T.create id) node
-
--- | This enables me to specifiy a new Arbitrary instance
-newtype NodeBunch i = NB {
-      nodes :: KBucket i
-    } deriving (Show)
-
--- | Make sure all Ids are unique
-instance (Arbitrary i, Eq i) => Arbitrary (NodeBunch i) where
-    arbitrary = liftM NB $ vectorOf 20 arbitrary `suchThat` individualIds
-        where individualIds s = length s == (length . cleared $ s)
-              cleared = nubBy (\a b -> nodeId a == nodeId b)
 
 withTree :: (T.NodeTree IdType -> [Node IdType] -> a) ->
             NodeBunch IdType -> IdType -> a

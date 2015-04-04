@@ -15,6 +15,7 @@ import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as C
 import Network.Socket (PortNumber)
 import Data.Word(Word16)
+import Data.List (nubBy)
 
 import Network.Kademlia.Types
 
@@ -65,3 +66,15 @@ instance (Arbitrary i, Arbitrary v) => Arbitrary (Signal i v) where
 
 instance (Arbitrary i) => Arbitrary (Node i) where
     arbitrary = liftM2 Node arbitrary arbitrary
+
+-- | This enables me to specifiy a new Arbitrary instance
+newtype NodeBunch i = NB {
+      nodes :: KBucket i
+    } deriving (Show)
+
+-- | Make sure all Ids are unique
+instance (Arbitrary i, Eq i) => Arbitrary (NodeBunch i) where
+    arbitrary = liftM NB $ vectorOf 20 arbitrary `suchThat` individualIds
+        where individualIds s = length s == (length . cleared $ s)
+              cleared = nubBy (\a b -> nodeId a == nodeId b)
+
