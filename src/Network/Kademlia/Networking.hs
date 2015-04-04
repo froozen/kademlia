@@ -51,7 +51,7 @@ openOn port id = withSocketsDo $ do
 recv :: (Serialize i, Serialize a) =>  KademliaHandle i a -> IO (Signal i a)
 recv kh = withSocketsDo $ do
     -- Read from socket
-    (received, addr) <- S.recvFrom (kSock kh) 1024
+    (received, addr) <- S.recvFrom (kSock kh) 1500
     -- Try to create peer
     peer <- toPeer addr
     case peer of
