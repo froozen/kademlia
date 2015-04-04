@@ -115,11 +115,8 @@ parseNode = do
 
 -- | Parses a trailing k-bucket
 parseKBucket :: (Serialize i) => Parse (KBucket i)
-parseKBucket = do
-    node <- parseNode
-    catchE
-        (liftM (node:) parseKBucket)
-        (\_ -> return [node])
+parseKBucket = liftM2 (:) parseNode parseKBucket
+                   `catchE` \_ -> return []
 
 -- | Parses the rest of a command corresponding to an id
 parseCommand :: (Serialize i, Serialize a) => Int -> Parse (Command i a)
