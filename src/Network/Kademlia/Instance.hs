@@ -39,7 +39,7 @@ start inst = void $ forkIO $
 
 
 -- | The actual process running in the background
-backgroundProcess :: (Serialize i, Ord i, Serialize a) =>
+backgroundProcess :: (Serialize i, Ord i, Serialize a, Eq i) =>
     KademliaInstance i a -> IO ()
 backgroundProcess inst = forever . flip execStateT inst  $ do
     -- Receive the next signal
@@ -55,10 +55,16 @@ backgroundProcess inst = forever . flip execStateT inst  $ do
     handleCommand (command sig) (peer . source $ sig)
 
 -- | Handles the differendt Kademlia Commands appropriately
-handleCommand :: (Serialize i, Serialize a) =>
+handleCommand :: (Serialize i, Eq i, Serialize a) =>
     Command i a -> Peer -> StateT (KademliaInstance i a) IO ()
 -- Simply answer a PING with a PONG
 handleCommand PING peer = do
     h <- gets handle
     liftIO $ send h peer PONG
+-- Return a KBucket with the closest Nodes
+handleCommand (FIND_NODE id) peer = do
+    h <- gets handle
+    tree <- gets tree
+    let nodes = T.findClosest tree id 7
+    liftIO $ send h peer (RETURN_NODES nodes)
 handleCommand _ _ = return ()
