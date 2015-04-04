@@ -71,4 +71,6 @@ hUnitTests = testGroup "HUnit" [
 instanceCases = testGroup "Network.Kademlia.Instance" [
       HU.testCase "PINGs are automaticly handled"
          handlesPingCheck
+    , HU.testCase "FIND_NODE is automaticly handled"
+         handlesFindNodeCheck
     ]
