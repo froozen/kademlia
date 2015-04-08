@@ -46,29 +46,28 @@ handlesPingCheck = do
     return ()
 
 -- | Checks wether FIND_NODE is handled appropriately and is deterministic
-handlesFindNodeCheck :: Assertion
-handlesFindNodeCheck = do
+handlesFindNodeCheck :: Property
+handlesFindNodeCheck = monadicIO $ do
     let pA = Peer "127.0.0.1" $ fromIntegral 1122
     let pB = Peer "127.0.0.1" $ fromIntegral 1123
 
-    let (Right (idA, _)) = fromBS . C.replicate 32 $ 'a'
-                           :: Either String (IdType, C.ByteString)
-    let (Right (idB, _)) = fromBS . C.replicate 32 $ 'b'
-                           :: Either String (IdType, C.ByteString)
+    idA <- pick (arbitrary :: Gen IdType)
+    idB <- pick (arbitrary :: Gen IdType)
 
-    khA <- openOn "1122" idA :: IO (KademliaHandle IdType String)
-    kiB <- create 1123 idB   :: IO (KademliaInstance IdType String)
+    khA <- run $ (openOn "1122" idA :: IO (KademliaHandle IdType String))
+    kiB <- run $ (create 1123 idB   :: IO (KademliaInstance IdType String))
 
-    send khA pB $ FIND_NODE idA
-    sig1 <- recv khA :: IO (Signal IdType String)
+    run $ send khA pB $ FIND_NODE idA
+    sig1 <- run $ (recv khA :: IO (Signal IdType String))
 
-    send khA pB $ FIND_NODE idA
-    sig2 <- recv khA :: IO (Signal IdType String)
+    run $ send khA pB $ FIND_NODE idA
+    sig2 <- run $ (recv khA :: IO (Signal IdType String))
 
-    assertEqual "" sig1 sig2
+    run $ closeK khA
+    run $ close kiB
 
-    closeK khA
-    close kiB
+    monitor . counterexample $ "Signals inequal: " ++ show sig1 ++ "\n  /=\n" ++ show sig2
+    assert $ sig1 == sig2
 
     return ()
 
