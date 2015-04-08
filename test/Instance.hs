@@ -7,7 +7,9 @@ Tests specific to Network.Kademlia.Instance.
 
 module Instance where
 
-import Test.HUnit
+import Test.HUnit hiding (assert)
+import Test.QuickCheck
+import Test.QuickCheck.Monadic
 
 import Network.Kademlia.Instance
 import Network.Kademlia
@@ -67,5 +69,32 @@ handlesFindNodeCheck = do
 
     closeK khA
     close kiB
+
+    return ()
+
+-- | Make sure a stored value can be retrieved
+storeAndFindValueCheck :: IdType -> String -> Property
+storeAndFindValueCheck key value = monadicIO $ do
+    let pA = Peer "127.0.0.1" $ fromIntegral 1122
+    let pB = Peer "127.0.0.1" $ fromIntegral 1123
+
+    idA <- pick (arbitrary :: Gen IdType)
+    idB <- pick (arbitrary :: Gen IdType)
+
+    khA <- run $ openOn "1122" idA
+    kiB <- run $ create 1123 idB :: PropertyM IO (KademliaInstance IdType String)
+
+    run $ send khA pB $ STORE key value
+    run $ send khA pB $ FIND_VALUE key
+
+    sig <- run $ (recv khA :: IO (Signal IdType String))
+
+    run $ closeK khA
+    run $ close kiB
+
+    let cmd = RETURN_VALUE value :: Command IdType String
+
+    monitor . counterexample $ "Commands inequal: " ++ show cmd ++ " /= " ++ show (command sig)
+    assert $ cmd == command sig
 
     return ()

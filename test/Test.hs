@@ -28,6 +28,7 @@ quickCheckTests = testGroup "QuickCheck" [
     , protocolChecks
     , networkingChecks
     , treeChecks
+    , instanceChecks
     ]
 
 typeChecks = testGroup "Network.Kademlia.Types" [
@@ -62,6 +63,11 @@ treeChecks = testGroup "Network.Kademlia.Tree" [
          refreshCheck
     , QC.testProperty "Finding closest works"
          findClosestCheck
+    ]
+
+instanceChecks = testGroup "Network.Kademlia.Instance" [
+      QC.testProperty "Storing and Retrieving values works"
+         storeAndFindValueCheck
     ]
 
 hUnitTests = testGroup "HUnit" [
