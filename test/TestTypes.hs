@@ -56,9 +56,9 @@ instance (Arbitrary i, Arbitrary v) => Arbitrary (Command i v) where
         , return PONG
         , liftM2 STORE arbitrary arbitrary
         , liftM FIND_NODE arbitrary
-        , liftM RETURN_NODES $ vectorOf 15 arbitrary
+        , liftM2 RETURN_NODES arbitrary $ vectorOf 15 arbitrary
         , liftM FIND_VALUE arbitrary
-        , liftM RETURN_VALUE arbitrary
+        , liftM2 RETURN_VALUE arbitrary arbitrary
         ]
 
 instance (Arbitrary i, Arbitrary v) => Arbitrary (Signal i v) where

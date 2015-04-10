@@ -92,7 +92,7 @@ data Command i a = PING
                  | PONG
                  | STORE        i a
                  | FIND_NODE    i
-                 | RETURN_NODES (KBucket i)
+                 | RETURN_NODES i (KBucket i)
                  | FIND_VALUE   i
-                 | RETURN_VALUE a
+                 | RETURN_VALUE i a
                    deriving (Eq, Show)

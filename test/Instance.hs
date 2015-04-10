@@ -91,7 +91,7 @@ storeAndFindValueCheck key value = monadicIO $ do
     run $ closeK khA
     run $ close kiB
 
-    let cmd = RETURN_VALUE value :: Command IdType String
+    let cmd = RETURN_VALUE key value :: Command IdType String
 
     monitor . counterexample $ "Commands inequal: " ++ show cmd ++ " /= " ++ show (command sig)
     assert $ cmd == command sig

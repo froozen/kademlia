@@ -89,7 +89,7 @@ handleCommand (FIND_VALUE key) peer = do
     case M.lookup key values of
         Just value -> do
             h <- ask
-            liftIO $ send h peer $ RETURN_VALUE value
+            liftIO $ send h peer $ RETURN_VALUE key value
         Nothing    -> returnNodes peer key
 handleCommand _ _ = return ()
 
@@ -100,4 +100,4 @@ returnNodes peer id = do
     h <- ask
     tree <- lift $ gets sTree
     let nodes = T.findClosest tree id 7
-    liftIO $ send h peer (RETURN_NODES nodes)
+    liftIO $ send h peer (RETURN_NODES id nodes)
