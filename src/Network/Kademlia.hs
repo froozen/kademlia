@@ -27,7 +27,7 @@ import Prelude hiding (lookup)
 import Control.Monad (void)
 
 -- | Create a new Kademlia Instance corresponding to a given Id on a given port
-create :: (Serialize i, Ord i, Serialize a) =>
+create :: (Serialize i, Ord i, Serialize a, Eq a, Eq i) =>
     Int -> i -> IO (KademliaInstance i a)
 create port id = do
     h <- openOn (show port) id

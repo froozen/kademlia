@@ -15,7 +15,9 @@ import Network.Kademlia.Instance
 import Network.Kademlia
 import Network.Kademlia.Networking
 import Network.Kademlia.Types
+import Network.Kademlia.ReplyQueue
 import qualified Data.ByteString.Char8 as C
+import Control.Concurrent.STM
 
 import TestTypes
 
@@ -33,8 +35,11 @@ handlesPingCheck = do
     khA <- openOn "1122" idA :: IO (KademliaHandle IdType String)
     kiB <- create 1123 idB   :: IO (KademliaInstance IdType String)
 
+    chan <- newTChanIO
+    startRecvProcess khA chan
+
     send khA pB PING
-    sig <- recv khA :: IO (Signal IdType String)
+    (Answer sig) <- atomically . readTChan $ chan :: IO (Reply IdType String)
 
     assertEqual "" (command sig) PONG
     assertEqual "" (peer . source $ sig) pB
@@ -57,11 +62,16 @@ handlesFindNodeCheck = monadicIO $ do
     khA <- run $ (openOn "1122" idA :: IO (KademliaHandle IdType String))
     kiB <- run $ (create 1123 idB   :: IO (KademliaInstance IdType String))
 
-    run $ send khA pB $ FIND_NODE idA
-    sig1 <- run $ (recv khA :: IO (Signal IdType String))
+    chan <- run $ newTChanIO
+    run $ startRecvProcess khA chan
 
     run $ send khA pB $ FIND_NODE idA
-    sig2 <- run $ (recv khA :: IO (Signal IdType String))
+    (Answer sig1) <- run $ (atomically . readTChan $ chan
+                                :: IO (Reply IdType String))
+
+    run $ send khA pB $ FIND_NODE idA
+    (Answer sig2) <- run $ (atomically . readTChan $ chan
+                                :: IO (Reply IdType String))
 
     run $ closeK khA
     run $ close kiB
@@ -83,10 +93,14 @@ storeAndFindValueCheck key value = monadicIO $ do
     khA <- run $ openOn "1122" idA
     kiB <- run $ create 1123 idB :: PropertyM IO (KademliaInstance IdType String)
 
+    chan <- run $ newTChanIO
+    run $ startRecvProcess khA chan
+
     run $ send khA pB $ STORE key value
     run $ send khA pB $ FIND_VALUE key
 
-    sig <- run $ (recv khA :: IO (Signal IdType String))
+    (Answer sig) <- run $ (atomically . readTChan $ chan
+                                :: IO (Reply IdType String))
 
     run $ closeK khA
     run $ close kiB
