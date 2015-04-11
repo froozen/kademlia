@@ -17,6 +17,7 @@ import Protocol
 import Networking
 import Tree
 import Instance
+import ReplyQueue
 
 main = defaultMain tests
 
@@ -29,6 +30,7 @@ quickCheckTests = testGroup "QuickCheck" [
     , networkingChecks
     , treeChecks
     , instanceChecks
+    , replyQueueChecks
     ]
 
 typeChecks = testGroup "Network.Kademlia.Types" [
@@ -70,6 +72,11 @@ instanceChecks = testGroup "Network.Kademlia.Instance" [
          storeAndFindValueCheck
     , QC.testProperty "FIND_NODE is automaticly handled"
          handlesFindNodeCheck
+    ]
+
+replyQueueChecks = testGroup "Network.Kademlia.ReplyQueue" [
+      QC.testProperty "Registering replies works"
+          repliesCheck
     ]
 
 hUnitTests = testGroup "HUnit" [
