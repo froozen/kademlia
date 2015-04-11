@@ -12,6 +12,8 @@ import Test.QuickCheck.Monadic
 
 import Network.Kademlia.Networking
 import Network.Kademlia.Types
+import Network.Kademlia.ReplyQueue
+import Control.Concurrent.STM
 import qualified Data.ByteString.Char8 as C
 
 import TestTypes
@@ -27,10 +29,14 @@ sendCheck = monadicIO $ do
     khA <- run $ openOn "1122" idA
     khB <- run $ openOn "1123" idB
 
+    chan <- run $ (newTChanIO :: IO (TChan (Reply IdType String)))
+    run $ startRecvProcess khB chan
+
     cmd <- pick (arbitrary :: Gen (Command IdType String))
 
     run $ send khA pB cmd
-    sig <- run $ (recv khB :: IO (Signal IdType String))
+    (Answer sig) <- run $ (atomically . readTChan $ chan
+                                :: IO (Reply IdType String))
 
     assert $ command sig == cmd
     assert $ (peer . source $ sig) == pA

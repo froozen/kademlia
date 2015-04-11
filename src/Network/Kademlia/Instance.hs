@@ -13,7 +13,8 @@ module Network.Kademlia.Instance
     ) where
 
 import Control.Concurrent
-import Control.Monad (void, forever)
+import Control.Concurrent.STM
+import Control.Monad (void, forever, when)
 import Control.Monad.Trans
 import Control.Monad.Trans.State
 import Control.Monad.Trans.Reader
@@ -24,6 +25,7 @@ import qualified Data.Map as M
 import Network.Kademlia.Networking
 import qualified Network.Kademlia.Tree as T
 import Network.Kademlia.Types
+import Network.Kademlia.ReplyQueue
 
 -- | The handle of a running Kademlia Node
 data KademliaInstance i a = KI {
@@ -41,35 +43,45 @@ data KademliaState i a = KS {
 type KademliaProcess i a = ReaderT (KademliaHandle i a) (StateT (KademliaState i a) IO)
 
 -- | Run a KademliaProcess from a KademliaInstance
-runKademliaProcess :: KademliaInstance i a -> KademliaProcess i a b -> IO b
-runKademliaProcess (KI handle tree) process =
-    evalStateT (runReaderT process handle) (KS tree M.empty)
+runKademliaProcess :: KademliaState i a -> KademliaHandle i a
+                   -> KademliaProcess i a b -> IO (b, KademliaState i a)
+runKademliaProcess state handle process =
+    runStateT (runReaderT process handle) state
 
 -- | Start the background process for a KademliaInstance
-start :: (Serialize i, Ord i, Serialize a) =>
+start :: (Serialize i, Ord i, Serialize a, Eq i, Eq a) =>
     KademliaInstance i a -> IO ()
-start inst = void $ forkIO $
-        -- There is a very high chance that there will arise an Exception,
-        -- caused by closing the KademliaHandle in another thread.
-        -- This acts as the stopping signal for the background process.
-        backgroundProcess inst `catchIOError` \e -> return ()
-
+start inst = do
+        chan <- newTChanIO
+        startRecvProcess (handle inst) chan
+        let state = KS (tree inst) M.empty
+        void . forkIO $ backgroundProcess state (handle inst) chan
 
 -- | The actual process running in the background
-backgroundProcess :: (Serialize i, Ord i, Serialize a, Eq i) =>
-    KademliaInstance i a -> IO ()
-backgroundProcess inst = runKademliaProcess inst . forever  $ do
-    -- Receive the next signal
-    h <- ask
-    sig <- liftIO . recv $ h
+backgroundProcess :: (Serialize i, Ord i, Serialize a, Eq i, Eq a) =>
+    KademliaState i a -> KademliaHandle i a -> TChan (Reply i a) -> IO ()
+backgroundProcess state handle chan = do
+    (continue, nextState) <- runKademliaProcess state handle $ do
+        -- sig <- liftIO . recv $ h
+        reply <- liftIO . atomically . readTChan $ chan
 
-    -- Insert the node into the tree, if it's allready known, it will be
-    -- refreshed
-    let node = source sig
-    lift $ modify $ \s -> s { sTree = T.insert (sTree s) node }
+        if reply /= Closed
+            then do
+                let (Answer sig) = reply
+                h <- ask
+                -- Insert the node into the tree, if it's allready known, it will be
+                -- refreshed
+                let node = source sig
+                lift $ modify $ \s -> s { sTree = T.insert (sTree s) node }
 
-    -- Handle the signal
-    handleCommand (command sig) (peer . source $ sig)
+                -- Handle the signal
+                handleCommand (command sig) (peer . source $ sig)
+
+                return True
+            -- Stop on Closed
+            else return False
+
+    when continue $ backgroundProcess nextState handle chan
 
 -- | Handles the differendt Kademlia Commands appropriately
 handleCommand :: (Serialize i, Eq i, Ord i, Serialize a) =>
