@@ -18,7 +18,8 @@ import Network.Socket hiding (send, sendTo, recv, recvFrom)
 import qualified Network.Socket.ByteString as S
 import Data.ByteString
 import Control.Monad (forever)
-import Control.Concurrent (forkIO)
+import Control.Exception (finally)
+import Control.Concurrent
 import Control.Concurrent.Chan
 
 import Network.Kademlia.Types
@@ -26,13 +27,14 @@ import Network.Kademlia.Protocol
 
 -- | A handle to a UDP socket running the Kademlia connection
 data KademliaHandle i a = KH {
-      kId :: i
-    , kSock :: Socket
+      kSock      :: Socket
+    , sendThread :: ThreadId
+    , sendChan   :: Chan (Command i a, Peer)
     }
 
 -- | Open a Kademlia connection on specified port and return a corresponding
 --   KademliaHandle
-openOn :: (Serialize i) => String -> i -> IO (KademliaHandle i a)
+openOn :: (Serialize i, Serialize a) => String -> i -> IO (KademliaHandle i a)
 openOn port id = withSocketsDo $ do
     -- Get addr to bind to
     (serveraddr:_) <- getAddrInfo
@@ -43,8 +45,26 @@ openOn port id = withSocketsDo $ do
     sock <- socket (addrFamily serveraddr) Datagram defaultProtocol
     bindSocket sock (addrAddress serveraddr)
 
+    chan <- newChan
+    tId <- forkIO . sendProcess sock id $ chan
+
     -- Return the handle
-    return $ KH id sock
+    return $ KH sock tId chan
+
+sendProcess :: (Serialize i, Serialize a) => Socket -> i
+            -> Chan (Command i a, Peer) -> IO ()
+sendProcess sock id chan = (withSocketsDo . forever $ do
+    (cmd, Peer host port) <- readChan chan
+
+    -- Get Peer's address
+    (peeraddr:_) <- getAddrInfo Nothing (Just host)
+                      (Just . show . fromIntegral $ port)
+
+    -- Send the signal
+    let sig = serialize id cmd
+    S.sendTo sock sig (addrAddress peeraddr))
+        -- | Close socket on exception (ThreadKilled)
+        `finally` sClose sock
 
 -- | Receive a signal from the connection corresponding to the specified
 --   KademliaHandle
@@ -65,15 +85,10 @@ recv kh = withSocketsDo $ do
 -- | Send a Signal to a Peer over the connection corresponding to the
 --   KademliaHandle
 send :: (Serialize i, Serialize a) => KademliaHandle i a -> Peer -> Command i a -> IO ()
-send kh (Peer host port) sig = withSocketsDo $ do
-    -- Get Peer's address
-    (peeraddr:_) <- getAddrInfo Nothing (Just host)
-                      (Just . show . fromIntegral $ port)
-
-    -- Send the signal
-    S.sendTo (kSock kh) (serialize (kId kh) sig) (addrAddress peeraddr)
-    return ()
+send kh peer cmd = writeChan (sendChan kh) (cmd, peer)
 
 -- | Close the connection corresponding to a KademliaHandle
 closeK :: KademliaHandle i a -> IO ()
-closeK kh = sClose $ kSock kh
+closeK kh = do
+    killThread . sendThread $ kh
+    yield
