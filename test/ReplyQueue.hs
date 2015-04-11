@@ -53,6 +53,30 @@ repliesCheck sig = monadicIO $ do
 
     assert . not $ removed
 
+-- | Check wether flushing works as expected
+flushCheck :: Signal IdType String -> Property
+flushCheck sig = monadicIO $ do
+    (use, sent) <- run . atomically $ do
+        rq <- emptyReplyQueue
+        chan <- newTChan :: STM (TChan (Reply IdType String))
+
+        let reg = toRegistration sig
+        case reg of
+            -- Discard the test case
+            Nothing -> return (False, False)
+            Just reg -> do
+                register reg rq chan
+                flush rq
+
+                dispatch sig rq
+
+                empty <- isEmptyTChan chan
+                return (True, empty)
+
+    pre use
+
+    assert . not $ sent
+
 -- | Convert a Signal into its ReplyRegistration representation
 toRegistration :: Signal i a -> Maybe (ReplyRegistration i)
 toRegistration sig = case rType . command $ sig of
