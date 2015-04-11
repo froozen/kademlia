@@ -16,10 +16,11 @@ module Network.Kademlia.ReplyQueue
     , emptyReplyQueue
     , register
     , dispatch
+    , flush
     ) where
 
 import Control.Concurrent.STM
-import Control.Monad (liftM)
+import Control.Monad (liftM, forM_)
 import Control.Monad.Trans.Maybe
 import Data.List (lookup, deleteBy)
 
@@ -90,3 +91,10 @@ dispatch sig (RQ rq) = do
                     deleteBy (\_ a -> fst a == reg) undefined queue
                 return True
             Nothing -> return False
+
+-- | Send Closed signal to all handlers and empty ReplyQueue
+flush :: ReplyQueue i a -> STM ()
+flush (RQ rq) = do
+    queue <- readTVar rq
+    forM_ queue $ \(_, chan) -> writeTChan chan Closed
+    writeTVar rq []
