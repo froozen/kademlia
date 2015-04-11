@@ -22,7 +22,7 @@ repliesCheck :: Signal IdType String -> Property
 repliesCheck sig = monadicIO $ do
     (sig2, use, removed) <- run . atomically $ do
         rq <- emptyReplyQueue
-        chan <- newTChan :: STM (TChan (Signal IdType String))
+        chan <- newTChan :: STM (TChan (Reply IdType String))
 
         let reg = toRegistration sig
         case reg of
@@ -37,7 +37,7 @@ repliesCheck sig = monadicIO $ do
                 if empty
                     then return (Nothing, True, False)
                     else do
-                        sig2 <- (readTChan chan :: STM (Signal IdType String))
+                        sig2 <- (readTChan chan :: STM (Reply IdType String))
                         removed <- dispatch sig rq
                         return $ (Just sig2, True, removed)
 
@@ -46,7 +46,10 @@ repliesCheck sig = monadicIO $ do
     assert $ sig2 /= Nothing
 
     let (Just unwrapped) = sig2
-    assert $ unwrapped == sig
+    assert $ unwrapped /= Closed
+
+    let (Answer unwrapped2) = unwrapped
+    assert $ unwrapped2 == sig
 
     assert . not $ removed
 

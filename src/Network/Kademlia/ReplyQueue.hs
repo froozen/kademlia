@@ -11,6 +11,7 @@ The handlers are represented by unbound channels from Control.Concurrency.Chan.
 module Network.Kademlia.ReplyQueue
     ( ReplyType(..)
     , ReplyRegistration(..)
+    , Reply(..)
     , ReplyQueue
     , emptyReplyQueue
     , register
@@ -24,7 +25,7 @@ import Data.List (lookup, deleteBy)
 
 import Network.Kademlia.Types
 
--- | The different types a reply could possibly have.
+-- | The different types a replied signal could possibly have.
 --
 --   Note that these are only those Command types, which are replies to some
 --   sort of request. Therefore, most Command types aren't contained in this
@@ -53,15 +54,20 @@ toRegistration sig = case rType . command $ sig of
           rType (RETURN_NODES id _) = Just (R_RETURN_NODES id)
           rType _ = Nothing
 
+-- | The actual type of a replay
+data Reply i a = Answer (Signal i a)
+               | Closed
+                 deriving (Eq)
+
 -- | The actual type representing a ReplyQueue
-newtype ReplyQueue i a = RQ (TVar [(ReplyRegistration i, TChan (Signal i a))])
+newtype ReplyQueue i a = RQ (TVar [(ReplyRegistration i, TChan (Reply i a))])
 
 -- | Create an empty ReplyQueue
 emptyReplyQueue :: STM (ReplyQueue i a)
 emptyReplyQueue = liftM RQ $ newTVar []
 
 -- | Register a channel as handler for a reply
-register :: ReplyRegistration i -> ReplyQueue i a -> TChan (Signal i a)
+register :: ReplyRegistration i -> ReplyQueue i a -> TChan (Reply i a)
          -> STM ()
 register reg (RQ rq) chan = do
     queue <- readTVar rq
@@ -77,7 +83,7 @@ dispatch sig (RQ rq) = do
         Just reg -> case lookup reg queue of
             Just chan -> do
                 -- Send the signal
-                writeTChan chan sig
+                writeTChan chan $ Answer sig
 
                 -- Remove registration from queue
                 writeTVar rq $
