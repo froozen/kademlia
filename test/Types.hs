@@ -10,7 +10,9 @@ module Types where
 import Test.QuickCheck
 
 import qualified Data.ByteString as B
+import Data.ByteString.Lazy (toStrict)
 import Data.Bits (testBit)
+import Data.Binary
 
 import TestTypes
 import Network.Kademlia.Types
@@ -19,7 +21,7 @@ import Network.Kademlia.Types
 toByteStructCheck :: IdType -> Bool
 toByteStructCheck id = foldl foldingFunc True [0..length converted - 1]
     where converted = toByteStruct id
-          words = B.unpack . toBS $ id
+          words = B.unpack . toStrict . encode $ id
           foldingFunc b i = b && (converted !! i == access words i)
           access ws i = testBit (ws !! (i `div` 8)) (i `mod` 8)
 

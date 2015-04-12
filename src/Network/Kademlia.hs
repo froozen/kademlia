@@ -25,9 +25,10 @@ import qualified Network.Kademlia.Tree as T
 import Network.Kademlia.Types
 import Prelude hiding (lookup)
 import Control.Monad (void)
+import Data.Binary
 
 -- | Create a new Kademlia Instance corresponding to a given Id on a given port
-create :: (Serialize i, Ord i, Serialize a, Eq a, Eq i) =>
+create :: (Binary i, Ord i, Eq i, Binary a, Eq a) =>
     Int -> i -> IO (KademliaInstance i a)
 create port id = do
     h <- openOn (show port) id
@@ -42,12 +43,12 @@ close = closeK . handle
 
 -- | Lookup the value corresponding to an Id in the Kademlia Network, using
 --   a running Kademlia Instance
-lookup :: (Serialize i, Serialize a) =>
+lookup :: (Binary i, Binary a) =>
            KademliaInstance i a -> i -> IO (Maybe a)
 lookup = undefined
 
 -- | Store the value corresponding to a Key in the Kademlia Network, using a
 --   running Kademlia Instance
-store :: (Serialize i, Serialize a) =>
+store :: (Binary i, Binary a) =>
           KademliaInstance i a -> i -> a -> IO ()
 store = undefined

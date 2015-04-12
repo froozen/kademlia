@@ -13,11 +13,12 @@ import qualified Network.Kademlia.Tree as T
 import Network.Kademlia.Types
 import Control.Monad (liftM)
 import Data.List (sortBy)
+import Data.Binary
 
 import TestTypes
 
 -- | Helper method for lookup checking
-lookupCheck :: (Serialize i, Eq i) => T.NodeTree i -> Node i -> Bool
+lookupCheck :: (Binary i, Eq i) => T.NodeTree i -> Node i -> Bool
 lookupCheck tree node = T.lookup tree (nodeId node) == Just node
 
 -- | Check wether an inserted Node is retrievable

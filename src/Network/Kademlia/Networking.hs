@@ -16,7 +16,7 @@ module Network.Kademlia.Networking
 -- Just to make sure I'll only use the ByteString functions
 import Network.Socket hiding (send, sendTo, recv, recvFrom, Closed)
 import qualified Network.Socket.ByteString as S
-import Data.ByteString
+import Data.ByteString.Lazy
 import Control.Monad (forever, unless)
 import Control.Exception (finally)
 import Control.Concurrent
@@ -24,9 +24,9 @@ import Control.Concurrent.STM
 import Control.Concurrent.Chan
 import Control.Concurrent.MVar
 import System.IO.Error (ioError, userError)
+import Data.Binary
 
 import Network.Kademlia.Types
-import Network.Kademlia.Protocol
 import Network.Kademlia.ReplyQueue
 
 -- | A handle to a UDP socket running the Kademlia connection
@@ -40,7 +40,7 @@ data KademliaHandle i a = KH {
 
 -- | Open a Kademlia connection on specified port and return a corresponding
 --   KademliaHandle
-openOn :: (Serialize i, Serialize a) => String -> i -> IO (KademliaHandle i a)
+openOn :: (Binary i, Binary a) => String -> i -> IO (KademliaHandle i a)
 openOn port id = withSocketsDo $ do
     -- Get addr to bind to
     (serveraddr:_) <- getAddrInfo
@@ -59,7 +59,7 @@ openOn port id = withSocketsDo $ do
     -- Return the handle
     return $ KH sock tId chan rq mvar
 
-sendProcess :: (Serialize i, Serialize a) => Socket -> i
+sendProcess :: (Binary i, Binary a) => Socket -> i
             -> Chan (Command i a, Peer) -> IO ()
 sendProcess sock id chan = (withSocketsDo . forever $ do
     (cmd, Peer host port) <- readChan chan
@@ -69,7 +69,7 @@ sendProcess sock id chan = (withSocketsDo . forever $ do
                       (Just . show . fromIntegral $ port)
 
     -- Send the signal
-    let sig = serialize id cmd
+    let sig = toStrict . serialize id $ cmd
     S.sendTo sock sig (addrAddress peeraddr))
         -- | Close socket on exception (ThreadKilled)
         `finally` sClose sock
@@ -80,7 +80,7 @@ sendProcess sock id chan = (withSocketsDo . forever $ do
 --   fails, send it to the supplied default channel instead.
 --
 --   This throws an exception if called a second time.
-startRecvProcess :: (Serialize i, Serialize a, Eq i, Eq a) => KademliaHandle i a
+startRecvProcess :: (Binary i, Binary a, Eq i, Eq a) => KademliaHandle i a
                  -> TChan (Reply i a) -> IO ()
 startRecvProcess kh defaultChan = do
     tId <- forkIO $ (withSocketsDo . forever $ do
@@ -92,7 +92,7 @@ startRecvProcess kh defaultChan = do
             Nothing -> return ()
             Just p  ->
                 -- Try parsing the signal
-                case parse p received of
+                case parse p . fromStrict $ received of
                     Left _    -> return ()
                     Right sig -> do
                         -- Try to dispatch the signal
@@ -112,7 +112,7 @@ startRecvProcess kh defaultChan = do
 
 -- | Send a Signal to a Peer over the connection corresponding to the
 --   KademliaHandle
-send :: (Serialize i, Serialize a) => KademliaHandle i a -> Peer -> Command i a
+send :: (Binary i, Binary a) => KademliaHandle i a -> Peer -> Command i a
      -> IO ()
 send kh peer cmd = writeChan (sendChan kh) (cmd, peer)
 

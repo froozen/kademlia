@@ -21,6 +21,7 @@ import Control.Monad.Trans.Reader
 import Control.Monad.IO.Class (liftIO)
 import System.IO.Error (catchIOError)
 import qualified Data.Map as M
+import Data.Binary
 
 import Network.Kademlia.Networking
 import qualified Network.Kademlia.Tree as T
@@ -49,7 +50,7 @@ runKademliaProcess state handle process =
     runStateT (runReaderT process handle) state
 
 -- | Start the background process for a KademliaInstance
-start :: (Serialize i, Ord i, Serialize a, Eq i, Eq a) =>
+start :: (Binary i, Ord i, Binary a, Eq i, Eq a) =>
     KademliaInstance i a -> IO ()
 start inst = do
         chan <- newTChanIO
@@ -58,7 +59,7 @@ start inst = do
         void . forkIO $ backgroundProcess state (handle inst) chan
 
 -- | The actual process running in the background
-backgroundProcess :: (Serialize i, Ord i, Serialize a, Eq i, Eq a) =>
+backgroundProcess :: (Binary i, Ord i, Binary a, Eq i, Eq a) =>
     KademliaState i a -> KademliaHandle i a -> TChan (Reply i a) -> IO ()
 backgroundProcess state handle chan = do
     (continue, nextState) <- runKademliaProcess state handle $ do
@@ -84,7 +85,7 @@ backgroundProcess state handle chan = do
     when continue $ backgroundProcess nextState handle chan
 
 -- | Handles the differendt Kademlia Commands appropriately
-handleCommand :: (Serialize i, Eq i, Ord i, Serialize a) =>
+handleCommand :: (Binary i, Eq i, Ord i, Binary a) =>
     Command i a -> Peer -> KademliaProcess i a ()
 -- Simply answer a PING with a PONG
 handleCommand PING peer = do
@@ -106,7 +107,7 @@ handleCommand (FIND_VALUE key) peer = do
 handleCommand _ _ = return ()
 
 -- | Return a KBucket with the closest Nodes to a supplied Id
-returnNodes :: (Serialize i, Eq i, Ord i, Serialize a) =>
+returnNodes :: (Binary i, Eq i, Ord i, Binary a) =>
     Peer -> i -> KademliaProcess i a ()
 returnNodes peer id = do
     h <- ask

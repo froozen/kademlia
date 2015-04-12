@@ -13,9 +13,8 @@ module Protocol
 
 import Test.QuickCheck
 
-import qualified Data.ByteString as B
+import qualified Data.ByteString.Lazy as B
 import Network.Kademlia.Types
-import Network.Kademlia.Protocol
 import TestTypes
 
 -- | A signal is the same as its serialized form parsed

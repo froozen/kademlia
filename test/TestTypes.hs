@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeSynonymInstances, FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances, FlexibleInstances, DeriveGeneric #-}
 
 {-|
 Module      : TestTypes
@@ -16,24 +16,13 @@ import qualified Data.ByteString.Char8 as C
 import Network.Socket (PortNumber)
 import Data.Word(Word16)
 import Data.List (nubBy)
+import GHC.Generics(Generic)
+import Data.Binary
 
 import Network.Kademlia.Types
 
-newtype IdType = IT { getBS :: B.ByteString } deriving (Eq, Show, Ord)
-
--- A simple 5-byte ByteString
-instance Serialize IdType where
-    toBS = getBS
-    fromBS bs = if B.length bs >= 5
-        then Right $ first IT . B.splitAt 5 $ bs
-        else Left "ByteString to short."
-
-instance Serialize String where
-    toBS = C.pack . show
-    fromBS s =
-        case (reads :: ReadS String) . C.unpack $ s of
-            []               -> Left "Failed to parse string."
-            (result, rest):_ -> Right (result, C.pack rest)
+newtype IdType = IT { getBS :: B.ByteString } deriving (Eq, Show, Ord, Generic)
+instance Binary IdType
 
 instance Arbitrary IdType where
     arbitrary = do

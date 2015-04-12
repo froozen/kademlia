@@ -24,6 +24,7 @@ import Prelude hiding (lookup, split)
 import Control.Monad (liftM)
 import Control.Arrow (first, second)
 import Data.Function (on)
+import Data.Binary
 
 -- | Type used for building the Node Storage Tree
 type NodeTree i = [(Bool, Maybe (KBucket i))]
@@ -32,7 +33,7 @@ type NodeTree i = [(Bool, Maybe (KBucket i))]
 type Zipper i = (NodeTree i, NodeTree i)
 
 -- | Move the Zipper along an Id
-seek :: (Serialize i) => NodeTree i -> i -> Zipper i
+seek :: (Binary i) => NodeTree i -> i -> Zipper i
 seek tree id = go tree $ toByteStruct id
     where go [] _ = ([], [])
           go (pair@(bit, bucket):rest) (b:bs)
@@ -46,7 +47,7 @@ ends ((_, Just _):_)  = False
 ends ((_, Nothing):_) = True
 
 -- | Apply a function to the KBucket a Node with a given Id would be in
-applyTo :: (Serialize i, Eq i) =>
+applyTo :: (Binary i, Eq i) =>
            (KBucket i -> a) -- ^ Function to apply at matched position
         -> a                -- ^ Default value
         -> NodeTree i       -- ^ NodeTree to apply to
@@ -58,7 +59,7 @@ applyTo f end tree id = case seek tree id of
         (_, (_, Just bucket):_) -> f bucket
 
 -- | Modify a NodeTree at the position a Node with a given Id would have
-modifyTreeAt :: (Serialize i, Eq i) =>
+modifyTreeAt :: (Binary i, Eq i) =>
                 ((Bool, Maybe (KBucket i)) -> (Bool, Maybe (KBucket i)))
                 -- ^ Function to apply to corresponding TreeNode
              -> NodeTree i -- ^ NodeTree to modify
@@ -69,7 +70,7 @@ modifyTreeAt f tree id = case seek tree id of
         (beg, pair:end) -> beg ++ f pair : end
 
 -- | Modify the KBucket a node of a given Id would be in
-modifyKBucket :: (Serialize i, Eq i) =>
+modifyKBucket :: (Binary i, Eq i) =>
                  (KBucket i -> KBucket i) -- ^ Modification funciton
               -> NodeTree i -- ^ Node tree to modify
               -> i          -- ^ Postition to modify at
@@ -77,11 +78,11 @@ modifyKBucket :: (Serialize i, Eq i) =>
 modifyKBucket f = modifyTreeAt (second . fmap $ f)
 
 -- | Create a NodeTree corresponding to the Owner-Node's Id
-create :: (Serialize i) => i -> NodeTree i
+create :: (Binary i) => i -> NodeTree i
 create id = zip (toByteStruct id) (repeat Nothing)
 
 -- | Insert a node into a NodeTree
-insert :: (Serialize i, Eq i, Ord i) => NodeTree i -> Node i -> NodeTree i
+insert :: (Binary i, Eq i, Ord i) => NodeTree i -> Node i -> NodeTree i
 insert tree node = case seek tree . nodeId $ node of
         -- The tree is empty, create first KBucket
         (_, (b, Nothing):xs)       -> (b, Just [node]):xs
@@ -101,8 +102,8 @@ insert tree node = case seek tree . nodeId $ node of
     where full b = length b >= 7
 
 -- Extract original Id from NodeTree
-extractId :: (Serialize i) => NodeTree i -> i
-extractId tree = fromByteStruct $ bs
+extractId :: (Binary i) => NodeTree i -> i
+extractId tree = fromByteStruct bs
     where bs = foldr (\x id -> fst x:id) [] tree
 
 -- | Split the last bucket
@@ -110,7 +111,7 @@ extractId tree = fromByteStruct $ bs
 --   This function does some quite unsafe pattern matching for the sake of not
 --   ending up even longer than it already is. It is only used internally and
 --   all the assumptions made by those patterns are provable, so it's ok.
-split :: (Serialize i, Ord i) => NodeTree i -> i -> NodeTree i
+split :: (Binary i, Ord i) => NodeTree i -> i -> NodeTree i
 split tree id = let (begin, (b, Just bucket):xs) = seek tree id
                     (this, next) = doSplit bucket
                 in begin ++ (b, Just this) : injectBucket next xs
@@ -133,18 +134,18 @@ split tree id = let (begin, (b, Just bucket):xs) = seek tree id
           injectBucket bucket ((b, _):xs) = (b, Just bucket):xs
 
 -- | Lookup a node within a NodeTree
-lookup :: (Serialize i, Eq i) => NodeTree i -> i -> Maybe (Node i)
+lookup :: (Binary i, Eq i) => NodeTree i -> i -> Maybe (Node i)
 lookup tree id = applyTo f Nothing tree id
     where f = L.find $ idMatches id
 
 -- | Delete a Node corresponding to a supplied Id from a NodeTree
-delete :: (Serialize i, Eq i) => NodeTree i -> i -> NodeTree i
+delete :: (Binary i, Eq i) => NodeTree i -> i -> NodeTree i
 delete tree id = modifyKBucket f tree id
     where f = filter $ not . idMatches id
 
 -- | Refresh the node corresponding to a supplied Id by placing it at the first
 --   index of it's KBucket
-refresh :: (Serialize i, Eq i) => NodeTree i -> i -> NodeTree i
+refresh :: (Binary i, Eq i) => NodeTree i -> i -> NodeTree i
 refresh tree id = modifyKBucket f tree id
     where f bucket = case L.find (idMatches id) bucket of
                 Just node -> node : L.delete node bucket
@@ -153,7 +154,7 @@ refresh tree id = modifyKBucket f tree id
 -- | Find the k closest Nodes to a given Id
 --
 --   Uset to implemenet RETURN_NODES
-findClosest :: (Serialize i, Eq i) => NodeTree i -> i -> Int -> KBucket i
+findClosest :: (Binary i, Eq i) => NodeTree i -> i -> Int -> KBucket i
 findClosest tree id n = case seek tree id of
     -- The tree is empty
     (_, (_, Nothing):xs) -> []
