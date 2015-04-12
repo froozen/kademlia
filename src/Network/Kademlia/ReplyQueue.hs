@@ -20,6 +20,7 @@ module Network.Kademlia.ReplyQueue
     ) where
 
 import Control.Concurrent.STM
+import Control.Concurrent.Chan
 import Control.Monad (liftM, forM_)
 import Control.Monad.Trans.Maybe
 import Data.List (lookup, deleteBy)
@@ -58,43 +59,43 @@ toRegistration sig = case rType . command $ sig of
 -- | The actual type of a replay
 data Reply i a = Answer (Signal i a)
                | Closed
-                 deriving (Eq)
+                 deriving (Eq, Show)
 
 -- | The actual type representing a ReplyQueue
-newtype ReplyQueue i a = RQ (TVar [(ReplyRegistration i, TChan (Reply i a))])
+newtype ReplyQueue i a = RQ (TVar [(ReplyRegistration i, Chan (Reply i a))])
 
 -- | Create an empty ReplyQueue
-emptyReplyQueue :: STM (ReplyQueue i a)
-emptyReplyQueue = liftM RQ $ newTVar []
+emptyReplyQueue :: IO (ReplyQueue i a)
+emptyReplyQueue = atomically . liftM RQ $ newTVar []
 
 -- | Register a channel as handler for a reply
-register :: ReplyRegistration i -> ReplyQueue i a -> TChan (Reply i a)
-         -> STM ()
-register reg (RQ rq) chan = do
+register :: ReplyRegistration i -> ReplyQueue i a -> Chan (Reply i a)
+         -> IO ()
+register reg (RQ rq) chan = atomically $ do
     queue <- readTVar rq
     writeTVar rq $ queue ++ [(reg, chan)]
 
 -- | Try to send a received Signal over the registered handler channel and
 --   return wether it succeeded
-dispatch :: (Eq i) => Signal i a -> ReplyQueue i a -> STM Bool
+dispatch :: (Eq i) => Signal i a -> ReplyQueue i a -> IO Bool
 dispatch sig (RQ rq) = do
-    queue <- readTVar  rq
+    queue <- atomically . readTVar $ rq
     case toRegistration sig of
         Nothing  -> return False
         Just reg -> case lookup reg queue of
             Just chan -> do
                 -- Send the signal
-                writeTChan chan $ Answer sig
+                writeChan chan $ Answer sig
 
                 -- Remove registration from queue
-                writeTVar rq $
+                atomically . writeTVar rq $
                     deleteBy (\_ a -> fst a == reg) undefined queue
                 return True
             Nothing -> return False
 
 -- | Send Closed signal to all handlers and empty ReplyQueue
-flush :: ReplyQueue i a -> STM ()
+flush :: ReplyQueue i a -> IO ()
 flush (RQ rq) = do
-    queue <- readTVar rq
-    forM_ queue $ \(_, chan) -> writeTChan chan Closed
-    writeTVar rq []
+    queue <- atomically . readTVar $ rq
+    forM_ queue $ \(_, chan) -> writeChan chan Closed
+    atomically . writeTVar rq $ []

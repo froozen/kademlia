@@ -13,7 +13,7 @@ module Network.Kademlia.Instance
     ) where
 
 import Control.Concurrent
-import Control.Concurrent.STM
+import Control.Concurrent.Chan
 import Control.Monad (void, forever, when)
 import Control.Monad.Trans
 import Control.Monad.Trans.State
@@ -52,17 +52,17 @@ runKademliaProcess state handle process =
 start :: (Serialize i, Ord i, Serialize a, Eq i, Eq a) =>
     KademliaInstance i a -> IO ()
 start inst = do
-        chan <- newTChanIO
+        chan <- newChan
         startRecvProcess (handle inst) chan
         let state = KS (tree inst) M.empty
         void . forkIO $ backgroundProcess state (handle inst) chan
 
 -- | The actual process running in the background
 backgroundProcess :: (Serialize i, Ord i, Serialize a, Eq i, Eq a) =>
-    KademliaState i a -> KademliaHandle i a -> TChan (Reply i a) -> IO ()
+    KademliaState i a -> KademliaHandle i a -> Chan (Reply i a) -> IO ()
 backgroundProcess state handle chan = do
     (continue, nextState) <- runKademliaProcess state handle $ do
-        reply <- liftIO . atomically . readTChan $ chan
+        reply <- liftIO . readChan $ chan
 
         if reply /= Closed
             then do

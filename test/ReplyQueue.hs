@@ -10,6 +10,7 @@ module ReplyQueue where
 import Test.QuickCheck
 import Test.QuickCheck.Monadic
 
+import Control.Concurrent.Chan
 import Control.Concurrent.STM
 
 import Network.Kademlia.ReplyQueue
@@ -20,62 +21,47 @@ import TestTypes
 -- | Check wether registered reply handlers a used and removed after usage
 repliesCheck :: Signal IdType String -> Property
 repliesCheck sig = monadicIO $ do
-    (sig2, use, removed) <- run . atomically $ do
-        rq <- emptyReplyQueue
-        chan <- newTChan :: STM (TChan (Reply IdType String))
+    rq <- run $ emptyReplyQueue
+    chan <- run $ (newChan :: IO (Chan (Reply IdType String)))
 
-        let reg = toRegistration sig
-        case reg of
-            -- Discard the test case
-            Nothing -> return (Nothing, False, False)
-            Just reg -> do
-                register reg rq chan
+    let reg = toRegistration sig
+    case reg of
+        -- Discard the test case
+        Nothing -> pre False
+        Just reg -> do
+            run $ register reg rq chan
 
-                dispatch sig rq
+            run $ dispatch sig rq
 
-                empty <- isEmptyTChan chan
-                if empty
-                    then return (Nothing, True, False)
-                    else do
-                        sig2 <- (readTChan chan :: STM (Reply IdType String))
-                        removed <- dispatch sig rq
-                        return $ (Just sig2, True, removed)
+            contents <- run $ getChanContents chan
+            assert . not . null $ contents
 
-    pre use
+            let sig2 = head contents
 
-    assert $ sig2 /= Nothing
+            assert $ sig2 /= Closed
+            let (Answer unwrapped) = sig2
+            assert $ unwrapped == sig
 
-    let (Just unwrapped) = sig2
-    assert $ unwrapped /= Closed
-
-    let (Answer unwrapped2) = unwrapped
-    assert $ unwrapped2 == sig
-
-    assert . not $ removed
+            removed <- run $ dispatch sig rq
+            assert . not $ removed
 
 -- | Check wether flushing works as expected
 flushCheck :: Signal IdType String -> Property
 flushCheck sig = monadicIO $ do
-    (use, sent) <- run . atomically $ do
-        rq <- emptyReplyQueue
-        chan <- newTChan :: STM (TChan (Reply IdType String))
+    rq <- run $ emptyReplyQueue
+    chan <- run $ (newChan :: IO (Chan (Reply IdType String)))
 
-        let reg = toRegistration sig
-        case reg of
-            -- Discard the test case
-            Nothing -> return (False, False)
-            Just reg -> do
-                register reg rq chan
-                flush rq
+    let reg = toRegistration sig
+    case reg of
+        -- Discard the test case
+        Nothing -> pre False
+        Just reg -> do
+            run $ register reg rq chan
+            run $ flush rq
 
-                dispatch sig rq
+            sent <- run $ dispatch sig rq
 
-                empty <- isEmptyTChan chan
-                return (True, empty)
-
-    pre use
-
-    assert . not $ sent
+            assert . not $ sent
 
 -- | Convert a Signal into its ReplyRegistration representation
 toRegistration :: Signal i a -> Maybe (ReplyRegistration i)

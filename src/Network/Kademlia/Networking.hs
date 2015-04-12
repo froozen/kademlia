@@ -53,7 +53,7 @@ openOn port id = withSocketsDo $ do
 
     chan <- newChan
     tId <- forkIO . sendProcess sock id $ chan
-    rq <- atomically emptyReplyQueue
+    rq <- emptyReplyQueue
     mvar <- newEmptyMVar
 
     -- Return the handle
@@ -81,7 +81,7 @@ sendProcess sock id chan = (withSocketsDo . forever $ do
 --
 --   This throws an exception if called a second time.
 startRecvProcess :: (Serialize i, Serialize a, Eq i, Eq a) => KademliaHandle i a
-                 -> TChan (Reply i a) -> IO ()
+                 -> Chan (Reply i a) -> IO ()
 startRecvProcess kh defaultChan = do
     tId <- forkIO $ (withSocketsDo . forever $ do
         -- Read from socket
@@ -96,16 +96,16 @@ startRecvProcess kh defaultChan = do
                     Left _    -> return ()
                     Right sig -> do
                         -- Try to dispatch the signal
-                        success <- atomically . dispatch sig $ replyQueue kh
+                        success <- dispatch sig $ replyQueue kh
 
                         unless success $
                             -- Send it to the default channel
-                            atomically . writeTChan defaultChan $ Answer sig)
+                            writeChan defaultChan $ Answer sig)
 
             -- Send Closed reply to all handlers
-            `finally` atomically (do
+            `finally` do
                 flush . replyQueue $ kh
-                writeTChan defaultChan  Closed)
+                writeChan defaultChan  Closed
 
     success <- tryPutMVar (recvThread kh) tId
     unless success . ioError . userError $ "Receiving process already running"
