@@ -31,8 +31,7 @@ create :: (Serialize i, Ord i, Serialize a, Eq a, Eq i) =>
     Int -> i -> IO (KademliaInstance i a)
 create port id = do
     h <- openOn (show port) id
-    let tree = T.create id
-    let inst = KI h tree
+    inst <- newInstance id h
     start inst
     return inst
 
