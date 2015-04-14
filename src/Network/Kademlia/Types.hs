@@ -11,6 +11,7 @@ module Network.Kademlia.Types
     , toPeer
     , Node(..)
     , KBucket
+    , sortByDistanceTo
     , Serialize(..)
     , Signal(..)
     , Command(..)
@@ -23,6 +24,8 @@ module Network.Kademlia.Types
 import Network.Socket (SockAddr(..), PortNumber, inet_ntoa, inet_addr)
 import qualified Data.ByteString as B (ByteString, foldr, pack)
 import Data.Bits (testBit, setBit, zeroBits)
+import Data.List (sortBy)
+import Data.Function (on)
 
 -- | Representation of an UDP peer
 data Peer = Peer {
@@ -39,6 +42,14 @@ data Node i = Node {
 -- | Aliases to make the code more readable by using the same names as the
 --   papers
 type KBucket i = [Node i]
+
+-- | Sort a bucket by the closeness of its nodes to a give Id
+sortByDistanceTo :: (Serialize i) => KBucket i -> i -> KBucket i
+sortByDistanceTo bucket id = unpack . sort . pack $ bucket
+    where pack bk = zip bk $ map f bk
+          f = distance id . nodeId
+          sort = sortBy (compare `on` snd)
+          unpack = map fst
 
 -- | A structure serializable into and parsable from a ByteString
 class Serialize a where

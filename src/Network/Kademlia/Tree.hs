@@ -19,7 +19,7 @@ module Network.Kademlia.Tree
     ) where
 
 import Network.Kademlia.Types
-import qualified Data.List as L (delete, find, sortBy)
+import qualified Data.List as L (delete, find)
 import Prelude hiding (lookup, split)
 import Control.Monad (liftM)
 import Control.Arrow (first, second)
@@ -168,9 +168,8 @@ findClosest tree id n = case seek tree id of
             in if ends xs
                     -- If it's the last one, take nodes from higher up in
                     -- the hierarchy
-                    then let this = pack bk
-                             higher = next missing $ reverse beg
-                         in map fst . take n . sort $ this ++ higher
+                    then let higher = next missing $ reverse beg
+                         in take n . flip sortByDistanceTo id $ bk ++ higher
                     -- Else retrieve the missing amount of Nodes by calling
                     -- findClosest with an Id whose first differing bit doesn't
                     -- differ.
@@ -180,21 +179,14 @@ findClosest tree id n = case seek tree id of
                              newId  = id `alignedTo` treeId
                              other  = findClosest tree newId missing
                          in bk ++ other
-    where -- Create a list of tuples in the form of (Node, distance) in order
-          -- to help sort them by distance
-          pack bk = zip bk $ map f bk
-          f = distance id . nodeId
-
-          -- Pick the n closest Nodes from the tree
+    where -- Pick the n closest Nodes from the tree
           next _ [] = []
           next n ((_, Nothing):xs) = next n xs
           next n ((_, Just bk):xs)
-            | length bk == n = pack bk
-            | length bk <  n = pack bk ++ next (n - length bk) xs
+            | length bk == n = bk
+            | length bk <  n = bk ++ next (n - length bk) xs
             -- Take the n closest Nodes
-            | otherwise = take n . sort . pack $ bk
-
-          sort = L.sortBy $ \(_, a) (_, b) -> compare a b
+            | otherwise = take n . sortByDistanceTo bk $ id
 
           -- Change the first differing bit of idA to match idB
           idA `alignedTo` idB = fromByteStruct . alignF idA $ idB
