@@ -37,12 +37,12 @@ sendCheck = monadicIO $ do
     run $ send khA pB cmd
     (Answer sig) <- run $ (readChan $ chan :: IO (Reply IdType String))
 
+    run $ closeK khA
+    run $ closeK khB
+
     assert $ command sig == cmd
     assert $ (peer . source $ sig) == pA
     assert $ (nodeId . source $ sig) == idA
-
-    run $ closeK khA
-    run $ closeK khB
 
     return ()
 

@@ -41,12 +41,12 @@ handlesPingCheck = do
     send khA pB PING
     (Answer sig) <- readChan $ chan :: IO (Reply IdType String)
 
+    closeK khA
+    close kiB
+
     assertEqual "" (command sig) PONG
     assertEqual "" (peer . source $ sig) pB
     assertEqual "" (nodeId . source $ sig) idB
-
-    closeK khA
-    close kiB
 
     return ()
 
