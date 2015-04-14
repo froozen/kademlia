@@ -50,6 +50,8 @@ protocolChecks = testGroup "Network.Kademlia.Protocol" [
 networkingChecks = testGroup "Network.Kademlia.Networking" [
       QC.testProperty "Sending and Receiving works"
          sendCheck
+    , QC.testProperty "Expecting works the way it's supposed to"
+         expectCheck
     ]
 
 treeChecks = testGroup "Network.Kademlia.Tree" [
