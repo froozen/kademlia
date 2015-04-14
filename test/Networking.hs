@@ -68,7 +68,7 @@ expectCheck = monadicIO $ do
     chanB <- run $ (newChan :: IO (Chan (Reply IdType String)))
     run $ startRecvProcess khB chanA
 
-    run $ expect khB rr chanB
+    run $ expect khB [rr] chanB
     run $ send khA pB cmd
     (Answer sig) <- run $ (readChan $ chanB :: IO (Reply IdType String))
 

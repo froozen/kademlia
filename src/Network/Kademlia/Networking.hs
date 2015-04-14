@@ -118,9 +118,9 @@ send :: (Serialize i, Serialize a) => KademliaHandle i a -> Peer -> Command i a
 send kh peer cmd = writeChan (sendChan kh) (cmd, peer)
 
 -- | Register a handler channel for a Reply
-expect :: (Serialize i, Serialize a) => KademliaHandle i a -> ReplyRegistration i
+expect :: (Serialize i, Serialize a) => KademliaHandle i a -> [ReplyRegistration i]
      -> Chan (Reply i a) -> IO ()
-expect kh reg = register reg . replyQueue $ kh
+expect kh regs = register regs . replyQueue $ kh
 
 -- | Close the connection corresponding to a KademliaHandle
 closeK :: KademliaHandle i a -> IO ()

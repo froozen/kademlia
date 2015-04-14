@@ -29,7 +29,7 @@ repliesCheck sig = monadicIO $ do
         -- Discard the test case
         Nothing -> pre False
         Just reg -> do
-            run $ register reg rq chan
+            run $ register [reg] rq chan
 
             run $ dispatch sig rq
 
@@ -56,7 +56,7 @@ flushCheck sig = monadicIO $ do
         -- Discard the test case
         Nothing -> pre False
         Just reg -> do
-            run $ register reg rq chan
+            run $ register [reg] rq chan
             run $ flush rq
 
             sent <- run $ dispatch sig rq

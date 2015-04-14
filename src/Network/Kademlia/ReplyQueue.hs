@@ -23,7 +23,7 @@ import Control.Concurrent.STM
 import Control.Concurrent.Chan
 import Control.Monad (liftM, forM_)
 import Control.Monad.Trans.Maybe
-import Data.List (lookup, deleteBy)
+import Data.List (find, delete)
 
 import Network.Kademlia.Types
 
@@ -62,18 +62,18 @@ data Reply i a = Answer (Signal i a)
                  deriving (Eq, Show)
 
 -- | The actual type representing a ReplyQueue
-newtype ReplyQueue i a = RQ (TVar [(ReplyRegistration i, Chan (Reply i a))])
+newtype ReplyQueue i a = RQ (TVar [([ReplyRegistration i], Chan (Reply i a))])
 
 -- | Create an empty ReplyQueue
 emptyReplyQueue :: IO (ReplyQueue i a)
 emptyReplyQueue = atomically . liftM RQ $ newTVar []
 
 -- | Register a channel as handler for a reply
-register :: ReplyRegistration i -> ReplyQueue i a -> Chan (Reply i a)
+register :: [ReplyRegistration i] -> ReplyQueue i a -> Chan (Reply i a)
          -> IO ()
-register reg (RQ rq) chan = atomically $ do
+register regs (RQ rq) chan = atomically $ do
     queue <- readTVar rq
-    writeTVar rq $ queue ++ [(reg, chan)]
+    writeTVar rq $ queue ++ [(regs, chan)]
 
 -- | Try to send a received Signal over the registered handler channel and
 --   return wether it succeeded
@@ -82,14 +82,13 @@ dispatch sig (RQ rq) = do
     queue <- atomically . readTVar $ rq
     case toRegistration sig of
         Nothing  -> return False
-        Just reg -> case lookup reg queue of
-            Just chan -> do
+        Just reg -> case find (\(regs, _) -> reg `elem` regs) queue of
+            Just reg@(_, chan) -> do
                 -- Send the signal
                 writeChan chan $ Answer sig
 
                 -- Remove registration from queue
-                atomically . writeTVar rq $
-                    deleteBy (\_ a -> fst a == reg) undefined queue
+                atomically . writeTVar rq $ delete reg queue
                 return True
             Nothing -> return False
 
