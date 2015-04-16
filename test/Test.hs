@@ -79,6 +79,8 @@ instanceChecks = testGroup "Network.Kademlia.Instance" [
 replyQueueChecks = testGroup "Network.Kademlia.ReplyQueue" [
       QC.testProperty "Registering replies works"
           repliesCheck
+    , QC.testProperty "Registrations are removed after being dispatched"
+         removedCheck
     , QC.testProperty "Flushing the queue works"
          flushCheck
     ]

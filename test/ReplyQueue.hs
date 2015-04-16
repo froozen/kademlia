@@ -18,7 +18,7 @@ import Network.Kademlia.Types
 
 import TestTypes
 
--- | Check wether registered reply handlers a used and removed after usage
+-- | Check wether registered reply handlers a used
 repliesCheck :: Signal IdType String -> Property
 repliesCheck sig = monadicIO $ do
     rq <- run $ emptyReplyQueue
@@ -41,6 +41,21 @@ repliesCheck sig = monadicIO $ do
             assert $ sig2 /= Closed
             let (Answer unwrapped) = sig2
             assert $ unwrapped == sig
+
+-- | Check wether registered reply handlers are removed after usage
+removedCheck :: Signal IdType String -> Property
+removedCheck sig = monadicIO $ do
+    rq <- run $ emptyReplyQueue
+    chan <- run $ (newChan :: IO (Chan (Reply IdType String)))
+
+    let reg = toRegistration sig
+    case reg of
+        -- Discard the test case
+        Nothing -> pre False
+        Just reg -> do
+            run $ register [reg] rq chan
+
+            run $ dispatch sig rq
 
             removed <- run $ dispatch sig rq
             assert . not $ removed
