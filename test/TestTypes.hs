@@ -16,6 +16,7 @@ import qualified Data.ByteString.Char8 as C
 import Network.Socket (PortNumber)
 import Data.Word(Word16)
 import Data.List (nubBy)
+import Data.Function (on)
 
 import Network.Kademlia.Types
 
@@ -76,5 +77,5 @@ newtype NodeBunch i = NB {
 instance (Arbitrary i, Eq i) => Arbitrary (NodeBunch i) where
     arbitrary = liftM NB $ vectorOf 20 arbitrary `suchThat` individualIds
         where individualIds s = length s == (length . cleared $ s)
-              cleared = nubBy (\a b -> nodeId a == nodeId b)
+              cleared = nubBy ((==) `on` nodeId)
 

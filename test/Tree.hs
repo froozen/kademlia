@@ -13,6 +13,7 @@ import qualified Network.Kademlia.Tree as T
 import Network.Kademlia.Types
 import Control.Monad (liftM)
 import Data.List (sortBy)
+import Data.Maybe (isJust)
 
 import TestTypes
 
@@ -81,7 +82,7 @@ findClosestCheck id = withTree f
                  treeClosest = T.findClosest tree id 7
 
                  contained = filter contains nodes
-                 contains node = (T.lookup tree . nodeId $ node) /= Nothing
+                 contains node = isJust . T.lookup tree . nodeId $ node
 
                  manualClosest = map fst . take 7 . sort $ packed
                  packed = zip contained $ map distanceF contained

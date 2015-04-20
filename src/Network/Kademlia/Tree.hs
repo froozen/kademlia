@@ -102,7 +102,7 @@ insert tree node = case seek tree . nodeId $ node of
 
 -- Extract original Id from NodeTree
 extractId :: (Serialize i) => NodeTree i -> i
-extractId tree = fromByteStruct $ bs
+extractId tree = fromByteStruct bs
     where bs = foldr (\x id -> fst x:id) [] tree
 
 -- | Split the last bucket

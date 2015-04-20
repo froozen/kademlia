@@ -15,27 +15,34 @@ import Network.Kademlia.Types
 import Network.Kademlia.ReplyQueue
 import Control.Concurrent.Chan
 import qualified Data.ByteString.Char8 as C
+import Data.Maybe (isJust)
 
 import TestTypes
 
--- | Make sure sending and receiving works
-sendCheck = monadicIO $ do
-    let pA = Peer "127.0.0.1" $ fromIntegral 1122
-    let pB = Peer "127.0.0.1" $ fromIntegral 1123
+valueSet :: (Monad m) => PropertyM m (Peer, Peer, IdType, IdType)
+valueSet = do
+    let pA = Peer "127.0.0.1" 1122
+        pB = Peer "127.0.0.1" 1123
 
     idA <- pick (arbitrary :: Gen IdType)
     idB <- pick (arbitrary :: Gen IdType)
 
+    return (pA, pB, idA, idB)
+
+-- | Make sure sending and receiving works
+sendCheck = monadicIO $ do
+    (pA, pB, idA, idB) <- valueSet
+
     khA <- run $ openOn "1122" idA
     khB <- run $ openOn "1123" idB
 
-    chan <- run $ (newChan :: IO (Chan (Reply IdType String)))
+    chan <- run (newChan :: IO (Chan (Reply IdType String)))
     run $ startRecvProcess khB chan
 
     cmd <- pick (arbitrary :: Gen (Command IdType String))
 
     run $ send khA pB cmd
-    (Answer sig) <- run $ (readChan $ chan :: IO (Reply IdType String))
+    (Answer sig) <- run (readChan chan :: IO (Reply IdType String))
 
     run $ closeK khA
     run $ closeK khB
@@ -48,29 +55,25 @@ sendCheck = monadicIO $ do
 
 -- | Make sure expect works the way it's supposed to
 expectCheck = monadicIO $ do
-    let pA = Peer "127.0.0.1" $ fromIntegral 1122
-    let pB = Peer "127.0.0.1" $ fromIntegral 1123
-
-    idA <- pick (arbitrary :: Gen IdType)
-    idB <- pick (arbitrary :: Gen IdType)
+    (pA, pB, idA, idB) <- valueSet
 
     cmd <- pick (arbitrary :: Gen (Command IdType String))
 
     let rtM = rType cmd
-    pre $ rtM /= Nothing
+    pre . isJust $ rtM
     let (Just rt) = rtM
         rr = ReplyRegistration rt idA
 
     khA <- run $ openOn "1122" idA
     khB <- run $ openOn "1123" idB
 
-    chanA <- run $ (newChan :: IO (Chan (Reply IdType String)))
-    chanB <- run $ (newChan :: IO (Chan (Reply IdType String)))
+    chanA <- run (newChan :: IO (Chan (Reply IdType String)))
+    chanB <- run (newChan :: IO (Chan (Reply IdType String)))
     run $ startRecvProcess khB chanA
 
     run $ expect khB [rr] chanB
     run $ send khA pB cmd
-    (Answer sig) <- run $ (readChan $ chanB :: IO (Reply IdType String))
+    (Answer sig) <- run (readChan chanB :: IO (Reply IdType String))
 
     run $ closeK khA
     run $ closeK khB

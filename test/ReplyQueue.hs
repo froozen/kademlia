@@ -12,6 +12,7 @@ import Test.QuickCheck.Monadic
 
 import Control.Concurrent.Chan
 import Control.Concurrent.STM
+import Data.Maybe (isJust)
 
 import Network.Kademlia.ReplyQueue
 import Network.Kademlia.Types
@@ -24,14 +25,14 @@ repliesCheck sig1 sig2 = monadicIO $ do
     let reg1 = toRegistration sig1
     let reg2 = toRegistration sig2
 
-    pre $ reg1 /= Nothing && reg2 /= Nothing
+    pre $ isJust reg1 && isJust reg2
 
     let (Just replyReg1) = reg1
     let (Just replyReg2) = reg2
     let regs = [replyReg1, replyReg2]
 
-    rq <- run $ emptyReplyQueue
-    chan <- run $ (newChan :: IO (Chan (Reply IdType String)))
+    rq <- run emptyReplyQueue
+    chan <- run (newChan :: IO (Chan (Reply IdType String)))
 
     run $ register regs rq chan
     run $ register regs rq chan
@@ -56,8 +57,8 @@ repliesCheck sig1 sig2 = monadicIO $ do
 -- | Check wether registered reply handlers are removed after usage
 removedCheck :: Signal IdType String -> Property
 removedCheck sig = monadicIO $ do
-    rq <- run $ emptyReplyQueue
-    chan <- run $ (newChan :: IO (Chan (Reply IdType String)))
+    rq <- run emptyReplyQueue
+    chan <- run (newChan :: IO (Chan (Reply IdType String)))
 
     let reg = toRegistration sig
     case reg of
@@ -74,8 +75,8 @@ removedCheck sig = monadicIO $ do
 -- | Check wether flushing works as expected
 flushCheck :: Signal IdType String -> Property
 flushCheck sig = monadicIO $ do
-    rq <- run $ emptyReplyQueue
-    chan <- run $ (newChan :: IO (Chan (Reply IdType String)))
+    rq <- run emptyReplyQueue
+    chan <- run (newChan :: IO (Chan (Reply IdType String)))
 
     let reg = toRegistration sig
     case reg of

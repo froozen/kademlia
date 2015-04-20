@@ -21,7 +21,7 @@ import TestTypes
 -- | A signal is the same as its serialized form parsed
 parseCheck :: Signal IdType String -> Property
 parseCheck s = test . parse (peer . source $ s) . serialize id . command $ s
-    where id = (nodeId . source $ s)
+    where id = nodeId . source $ s
           test (Left err) = counterexample "Parsing failed" False
           test (Right s') = counterexample
             ("Signals differ:\nIn:  " ++ show s ++ "\nOut: "
