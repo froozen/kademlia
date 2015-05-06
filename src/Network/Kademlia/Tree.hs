@@ -16,6 +16,7 @@ module Network.Kademlia.Tree
     , delete
     , refresh
     , findClosest
+    , extractId
     ) where
 
 import Network.Kademlia.Types

@@ -15,16 +15,21 @@ module Network.Kademlia
     ( KademliaInstance
     , create
     , close
-    , lookup
-    , store
+    , I.lookup
+    , I.store
+    , I.joinNetwork
     ) where
 
 import Network.Kademlia.Networking
 import Network.Kademlia.Instance
 import qualified Network.Kademlia.Tree as T
 import Network.Kademlia.Types
+import Network.Kademlia.ReplyQueue
+import Network.Kademlia.Implementation as I
 import Prelude hiding (lookup)
-import Control.Monad (void)
+import Control.Monad (void, forM_)
+import Control.Concurrent.Chan
+import Control.Concurrent.STM
 
 -- | Create a new Kademlia Instance corresponding to a given Id on a given port
 create :: (Serialize i, Ord i, Serialize a, Eq a, Eq i) =>
@@ -38,15 +43,3 @@ create port id = do
 -- | Stop a Kademlia Instance by closing it
 close :: KademliaInstance i a -> IO ()
 close = closeK . handle
-
--- | Lookup the value corresponding to an Id in the Kademlia Network, using
---   a running Kademlia Instance
-lookup :: (Serialize i, Serialize a) =>
-           KademliaInstance i a -> i -> IO (Maybe a)
-lookup = undefined
-
--- | Store the value corresponding to a Key in the Kademlia Network, using a
---   running Kademlia Instance
-store :: (Serialize i, Serialize a) =>
-          KademliaInstance i a -> i -> a -> IO ()
-store = undefined

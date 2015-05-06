@@ -23,6 +23,7 @@ library
                        Network.Kademlia.Types, Network.Kademlia.Protocol,
                        Network.Kademlia.Protocol.Parsing, Network.Kademlia.Tree,
                        Network.Kademlia.Instance, Network.Kademlia.ReplyQueue
+                       Network.Kademlia.Implementation
   build-depends:       base >=4.7, network >=2.6 && <2.7, mtl >=2.2.1,
                        bytestring >=0.10 && <0.11, transformers >=0.3.3,
                        containers >=0.5.5.1, stm >=2.4.4
