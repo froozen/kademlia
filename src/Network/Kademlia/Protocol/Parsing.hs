@@ -13,6 +13,7 @@ module Network.Kademlia.Protocol.Parsing where
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as C
 import Control.Monad (liftM, liftM2)
+import Control.Monad.Trans (lift)
 import Control.Monad.State
 import Control.Monad.Trans.Except
 import Text.Read (readMaybe)
@@ -41,61 +42,61 @@ parseSignal peer = do
 -- | Parses a Serialize
 parseSerialize :: (Serialize a) => Parse a
 parseSerialize = do
-    bs <- get
+    bs <- lift get
     case fromBS bs of
         Left err -> throwE err
         Right (id, rest) -> do
-            put rest
+            lift . put $ rest
             return id
 
 -- | Parses a CommandId
 parseCommandId :: Parse Int
 parseCommandId = do
-    bs <- get
+    bs <- lift get
     case B.uncons bs of
         Nothing         -> throwE "uncons returned Nothing"
         Just (id, rest) -> do
-            put rest
+            lift . put $ rest
             return $ fromIntegral id
 
 -- | Splits after a certain character
 parseSplit :: Char -> Parse B.ByteString
 parseSplit c = do
-    bs <- get
+    bs <- lift get
     if B.null bs
         then throwE "ByteString empty"
         else do
             let (result, rest) = C.span (/=c) bs
-            put rest
+            lift . put $ rest
             return result
 
 -- | Skips one character
 skipCharacter :: Parse ()
 skipCharacter = do
-    bs <- get
+    bs <- lift get
     if B.null bs
         then throwE "ByteString empty"
-        else put $ B.drop 1 bs
+        else lift . put $ B.drop 1 bs
 
 -- | Parses an Int
 parseInt :: Parse Int
 parseInt = do
-    bs <- get
+    bs <- lift get
     case C.readInt bs of
         Nothing -> throwE "Failed to parse an Int"
         Just (n, rest) -> do
-            put rest
+            lift . put $ rest
             return n
 
 -- | Parses two Word8s from a ByteString into one Word16
 parseWord16 :: Parse Word16
 parseWord16 = do
-    bs <- get
+    bs <- lift  get
     if B.length bs < 2
         then throwE "ByteString to short"
         else do
             let (words, rest) = B.splitAt 2 bs
-            put rest
+            lift . put $ rest
             return . joinWords . B.unpack $ words
     where
         joinWords [a, b] = (toWord16 a `shiftL` 8) + toWord16 b
