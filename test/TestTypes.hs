@@ -76,6 +76,16 @@ newtype NodeBunch i = NB {
 -- | Make sure all Ids are unique
 instance (Arbitrary i, Eq i) => Arbitrary (NodeBunch i) where
     arbitrary = liftM NB $ vectorOf 20 arbitrary `suchThat` individualIds
-        where individualIds s = length s == (length . cleared $ s)
-              cleared = nubBy ((==) `on` nodeId)
+        where individualIds = individual ((==) `on` nodeId)
 
+individual :: (a -> a -> Bool) -> [a] -> Bool
+individual eq s = length s == (length . clear $ s)
+    where clear = nubBy eq
+
+-- | This is needed for the Implementation tests
+newtype IdBunch i = IB {
+      getIds :: [i]
+    } deriving (Show)
+
+instance (Arbitrary i, Eq i) => Arbitrary (IdBunch i) where
+    arbitrary = liftM IB $ vectorOf 20 arbitrary `suchThat` individual (==)

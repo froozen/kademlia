@@ -18,6 +18,7 @@ import Networking
 import Tree
 import Instance
 import ReplyQueue
+import Implementation
 
 main = defaultMain tests
 
@@ -31,6 +32,7 @@ quickCheckTests = testGroup "QuickCheck" [
     , treeChecks
     , instanceChecks
     , replyQueueChecks
+    , implementationChecks
     ]
 
 typeChecks = testGroup "Network.Kademlia.Types" [
@@ -81,6 +83,13 @@ replyQueueChecks = testGroup "Network.Kademlia.ReplyQueue" [
          removedCheck
     , QC.testProperty "Flushing the queue works"
          flushCheck
+    ]
+
+implementationChecks = testGroup "Network.Kademlia.Implementation" [
+      QC.testProperty "Joining the Network works"
+         joinCheck
+    , QC.testProperty "Storing and looking up values works"
+        storeAndLookupCheck
     ]
 
 hUnitTests = testGroup "HUnit" [
