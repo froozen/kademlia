@@ -60,32 +60,6 @@ handlesPingCheck = do
 
     return ()
 
--- | Checks wether FIND_NODE is handled appropriately and is deterministic
-handlesFindNodeCheck :: Property
-handlesFindNodeCheck = monadicIO $ do
-    let (pA, pB) = peers
-    (idA, idB) <- ids
-
-    khA <- run (openOn "1122" idA :: IO (KademliaHandle IdType String))
-    kiB <- run (create 1123 idB   :: IO (KademliaInstance IdType String))
-
-    chan <- run newChan
-    run $ startRecvProcess khA chan
-
-    run $ send khA pB $ FIND_NODE idA
-    (Answer sig1) <- run (readChan chan :: IO (Reply IdType String))
-
-    run $ send khA pB $ FIND_NODE idA
-    (Answer sig2) <- run (readChan chan :: IO (Reply IdType String))
-
-    run $ closeK khA
-    run $ close kiB
-
-    monitor . counterexample $ "Signals inequal: " ++ show sig1 ++ "\n  /=\n" ++ show sig2
-    assert $ sig1 == sig2
-
-    return ()
-
 -- | Make sure a stored value can be retrieved
 storeAndFindValueCheck :: IdType -> String -> Property
 storeAndFindValueCheck key value = monadicIO $ do

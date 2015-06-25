@@ -72,8 +72,6 @@ treeChecks = testGroup "Network.Kademlia.Tree" [
 instanceChecks = testGroup "Network.Kademlia.Instance" [
       QC.testProperty "Storing and Retrieving values works"
          storeAndFindValueCheck
-    , QC.testProperty "FIND_NODE is automaticly handled"
-         handlesFindNodeCheck
     ]
 
 replyQueueChecks = testGroup "Network.Kademlia.ReplyQueue" [
