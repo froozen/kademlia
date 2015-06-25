@@ -12,6 +12,7 @@ module Network.Kademlia.Instance
     , KademliaState(..)
     , start
     , newInstance
+    , insertNode
     ) where
 
 import Control.Concurrent
@@ -50,28 +51,20 @@ newInstance id handle = do
     values <- atomically . newTVar $ M.empty
     return . KI handle . KS tree $ values
 
--- | MonadTransformer context of backgroundProcess
-type KademliaProcess i a = ReaderT (KademliaHandle i a) (StateT (KademliaState i a) IO)
+insertNode :: (Serialize i, Ord i) => KademliaInstance i a -> Node i -> IO ()
+insertNode (KI _ (KS sTree _)) node = atomically $ do
+    tree <- readTVar sTree
+    writeTVar sTree . T.insert tree $ node
 
--- | Run a KademliaProcess from a KademliaInstance
-runKademliaProcess :: KademliaInstance i a -> KademliaProcess i a b
-                   -> IO (b, KademliaState i a)
-runKademliaProcess (KI handle state) process =
-    runStateT (runReaderT process handle) state
+insertValue :: (Ord i) => i -> a -> KademliaInstance i a -> IO ()
+insertValue key value (KI _ (KS _ values)) = atomically $ do
+    vals <- readTVar values
+    writeTVar values $ M.insert key value vals
 
--- | Modify a part of the KademliaState
-modifyP :: (KademliaState i a -> TVar b) -> (b -> b) -> KademliaProcess i a ()
-modifyP take f = do
-    tVar <- lift . gets $ take
-    liftIO . atomically $ do
-        x <- readTVar tVar
-        writeTVar tVar $ f x
-
--- | Read the current state of a part of the KademliaState
-readP :: (KademliaState i a -> TVar b) -> KademliaProcess i a b
-readP take = do
-    tVar <- lift . gets $ take
-    liftIO . atomically . readTVar $ tVar
+lookupValue :: (Ord i) => i -> KademliaInstance i a -> IO (Maybe a)
+lookupValue key (KI _ (KS _ values)) = atomically $ do
+    vals <- readTVar values
+    return . M.lookup key $ vals
 
 -- | Start the background process for a KademliaInstance
 start :: (Serialize i, Ord i, Serialize a, Eq i, Eq a) =>
@@ -85,54 +78,46 @@ start inst = do
 backgroundProcess :: (Serialize i, Ord i, Serialize a, Eq i, Eq a) =>
     KademliaInstance i a -> Chan (Reply i a) -> IO ()
 backgroundProcess inst chan = do
-    (continue, nextState) <- runKademliaProcess inst $ do
-        reply <- liftIO . readChan $ chan
+    reply <- liftIO . readChan $ chan
 
-        if reply /= Closed
-            then do
-                let (Answer sig) = reply
-                let node = source sig
+    if reply /= Closed
+        then do
+            let (Answer sig) = reply
+                node = source sig
 
-                -- Insert the node into the tree, if it's allready known, it will
-                -- be refreshed
-                modifyP sTree $ \tree -> T.insert tree node
+            -- Handle the signal
+            handleCommand (command sig) (peer node) inst
 
-                -- Handle the signal
-                handleCommand (command sig) (peer node)
+            -- Insert the node into the tree, if it's allready known, it will
+            -- be refreshed
+            insertNode inst node
 
-                return True
-            -- Stop on Closed
-            else return False
+            backgroundProcess inst chan
+        -- Stop on Closed
+        else return ()
 
-    when continue $ backgroundProcess inst chan
 
 -- | Handles the differendt Kademlia Commands appropriately
 handleCommand :: (Serialize i, Eq i, Ord i, Serialize a) =>
-    Command i a -> Peer -> KademliaProcess i a ()
+    Command i a -> Peer -> KademliaInstance i a -> IO ()
 -- Simply answer a PING with a PONG
-handleCommand PING peer = do
-    h <- ask
-    liftIO $ send h peer PONG
+handleCommand PING peer inst = send (handle inst) peer PONG
 -- Return a KBucket with the closest Nodes
-handleCommand (FIND_NODE id) peer = returnNodes peer id
+handleCommand (FIND_NODE id) peer inst = returnNodes peer id inst
 -- Insert the value into the values Map
-handleCommand (STORE key value) _ =
-    modifyP values $ \vals -> M.insert key value vals
+handleCommand (STORE key value) _ inst = insertValue key value inst
 -- Return the value, if known, or the closest other known Nodes
-handleCommand (FIND_VALUE key) peer = do
-    values <- readP values
-    case M.lookup key values of
-        Just value -> do
-            h <- ask
-            liftIO $ send h peer $ RETURN_VALUE key value
-        Nothing    -> returnNodes peer key
-handleCommand _ _ = return ()
+handleCommand (FIND_VALUE key) peer inst = do
+    result <- lookupValue key inst
+    case result of
+        Just value -> liftIO $ send (handle inst) peer $ RETURN_VALUE key value
+        Nothing    -> returnNodes peer key inst
+handleCommand _ _ _ = return ()
 
 -- | Return a KBucket with the closest Nodes to a supplied Id
 returnNodes :: (Serialize i, Eq i, Ord i, Serialize a) =>
-    Peer -> i -> KademliaProcess i a ()
-returnNodes peer id = do
-    h <- ask
-    tree <- readP sTree
+    Peer -> i -> KademliaInstance i a -> IO ()
+returnNodes peer id (KI h (KS sTree _)) = do
+    tree <- atomically . readTVar $ sTree
     let nodes = T.findClosest tree id 7
     liftIO $ send h peer (RETURN_NODES id nodes)
