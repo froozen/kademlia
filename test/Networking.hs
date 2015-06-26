@@ -62,7 +62,7 @@ expectCheck = monadicIO $ do
     let rtM = rType cmd
     pre . isJust $ rtM
     let (Just rt) = rtM
-        rr = ReplyRegistration rt idA
+        rr = RR [rt] idA
 
     khA <- run $ openOn "1122" idA
     khB <- run $ openOn "1123" idB
@@ -71,7 +71,7 @@ expectCheck = monadicIO $ do
     chanB <- run (newChan :: IO (Chan (Reply IdType String)))
     run $ startRecvProcess khB chanA
 
-    run $ expect khB [rr] chanB
+    run $ expect khB rr chanB
     run $ send khA pB cmd
     (Answer sig) <- run (readChan chanB :: IO (Reply IdType String))
 

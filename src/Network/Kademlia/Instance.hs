@@ -13,6 +13,8 @@ module Network.Kademlia.Instance
     , start
     , newInstance
     , insertNode
+    , deleteNode
+    , lookupNode
     ) where
 
 import Control.Concurrent
@@ -56,6 +58,16 @@ insertNode (KI _ (KS sTree _)) node = atomically $ do
     tree <- readTVar sTree
     writeTVar sTree . T.insert tree $ node
 
+deleteNode :: (Serialize i, Ord i) => KademliaInstance i a -> i -> IO ()
+deleteNode (KI _ (KS sTree _)) id = atomically $ do
+    tree <- readTVar sTree
+    writeTVar sTree . T.delete tree $ id
+
+lookupNode :: (Serialize i, Ord i) => KademliaInstance i a -> i -> IO (Maybe (Node i))
+lookupNode (KI _ (KS sTree _)) id = atomically $ do
+    tree <- readTVar sTree
+    return . T.lookup tree $ id
+
 insertValue :: (Ord i) => i -> a -> KademliaInstance i a -> IO ()
 insertValue key value (KI _ (KS _ values)) = atomically $ do
     vals <- readTVar values
@@ -80,10 +92,9 @@ backgroundProcess :: (Serialize i, Ord i, Serialize a, Eq i, Eq a) =>
 backgroundProcess inst chan = do
     reply <- liftIO . readChan $ chan
 
-    if reply /= Closed
-        then do
-            let (Answer sig) = reply
-                node = source sig
+    case reply of
+        Answer sig -> do
+            let node = source sig
 
             -- Handle the signal
             handleCommand (command sig) (peer node) inst
@@ -93,8 +104,12 @@ backgroundProcess inst chan = do
             insertNode inst node
 
             backgroundProcess inst chan
+
+        -- Delete timed out nodes
+        Timeout id -> deleteNode inst id
+
         -- Stop on Closed
-        else return ()
+        Closed -> return ()
 
 
 -- | Handles the differendt Kademlia Commands appropriately

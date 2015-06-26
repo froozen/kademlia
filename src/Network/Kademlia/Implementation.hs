@@ -18,13 +18,14 @@ import qualified Network.Kademlia.Tree as T
 import Network.Kademlia.Types
 import Network.Kademlia.ReplyQueue
 import Prelude hiding (lookup)
-import Control.Monad (forM_, unless)
+import Control.Monad (forM_, unless, when)
 import Control.Monad.Trans.State hiding (state)
 import Control.Concurrent.Chan
 import Control.Concurrent.STM
 import Control.Monad.IO.Class (liftIO)
-import Data.List (delete)
-import System.Timeout
+import Data.List (delete, find)
+import Data.Maybe (isJust, fromJust)
+
 
 -- Lookup the value corresponding to a key in the DHT
 lookup :: (Serialize i, Serialize a, Eq i, Ord i) => KademliaInstance i a -> i
@@ -54,17 +55,14 @@ lookup inst id = runLookup go inst id
 store :: (Serialize i, Serialize a, Eq i, Ord i) =>
          KademliaInstance i a -> i -> a -> IO ()
 store inst key val = runLookup go inst key
-    where go = startLookup sendS cancel checkCommand
-
-          -- Do nothing, if the store operation fails
-          cancel = return ()
+    where go = startLookup sendS end checkCommand
 
           -- Always add the nodes into the loop and continue the lookup
           checkCommand (RETURN_NODES _ nodes) =
                 continueLookup nodes sendS continue end
 
           -- Continuing always means waiting for the next signal
-          continue = waitForReply cancel checkCommand sendS
+          continue = waitForReply end checkCommand sendS
 
           -- Send a FIND_NODE command, looking for the node corresponding to the
           -- key
@@ -116,6 +114,7 @@ data LookupState i a = LookupState {
     , known :: [Node i]
     , pending :: [Node i]
     , polled :: [Node i]
+    , timedOut :: [Node i]
     }
 
 -- | MonadTransformer context of a lookup
@@ -125,7 +124,7 @@ type LookupM i a = StateT (LookupState i a) IO
 runLookup :: LookupM i a b -> KademliaInstance i a -> i ->IO b
 runLookup lookup inst id = do
     chan <- newChan
-    let state = LookupState inst id chan [] [] []
+    let state = LookupState inst id chan [] [] [] []
 
     evalStateT lookup state
 
@@ -158,38 +157,77 @@ waitForReply :: (Serialize i, Serialize a, Ord i) => LookupM i a b
              -> LookupM i a b
 waitForReply cancel onCommand sendSignal = do
     chan <- gets replyChan
-    pending <- gets pending
+    sPending <- gets pending
+    known <- gets known
     inst <- gets inst
+    polled <- gets polled
 
-    result <- liftIO . timeout fiveSeconds . readChan $ chan
+    result <- liftIO . readChan $ chan
     case result of
         -- If there was a reply
-        Just reply -> case reply of
-            Closed -> cancel
-            Answer sig@(Signal node _) -> do
-                -- Insert the node into the tree, as it might be a new one or it
-                -- would have to be refreshed
-                liftIO . insertNode inst $ node
+        Answer sig@(Signal node _) -> do
+            -- Insert the node into the tree, as it might be a new one or it
+            -- would have to be refreshed
+            liftIO . insertNode inst $ node
 
-                -- Remove the node from the list of nodes with pending replies
-                modify $ \s -> s { pending = delete node pending }
+            -- Remove the node from the list of nodes with pending replies
+            modify $ \s -> s { pending = delete node sPending }
 
-                -- Call the command handler
-                onCommand . command $ sig
+            -- Call the command handler
+            onCommand . command $ sig
 
         -- On timeout
-        _ -> do
-            -- Empty the pending list, as all the nodes will be added into it
-            -- again, when sendSignal is called
-            modify $ \s -> s { pending = [] }
+        Timeout id -> do
+            timedOut <- gets timedOut
 
-            -- Repoll all the pending nodes
-            mapM_ sendSignal pending
+            -- Find the node corresponding to the id
+            --
+            -- ReplyQueue guarantees us, that it will be in polled, therefore
+            -- we can use fromJust
+            let node = fromJust . find (\n -> nodeId n == id) $ polled
 
-            -- Continue the recursive lookud
-            waitForReply cancel onCommand sendSignal
+            -- Node hasn't already timed out once during the lookup
+            if node `notElem` timedOut
+                -- Resend the signal for a node that timed out the for first
+                -- time.
+                --
+                -- This is appropriate, as UDP doesn't guarantee for all the
+                -- packages to arrive, so, because a lookup operation means
+                -- sending a lot of packets at the same time, the fault
+                -- might very well be on out side, therefore a timeout
+                -- doesn't neccessarily mean a disconnect.
+                then do
+                    modify $ \s -> s {
+                          -- Remove the node from the list of pending
+                          -- nodes, as it will be added again when
+                          -- sendSignal is called
+                          pending = delete node sPending
 
-    where fiveSeconds = 5000000
+                          -- Add the node to the list of timedOut nodes
+                        , timedOut = node:timedOut
+                        }
+
+                    -- Repoll the node
+                    sendSignal node
+
+                -- Delete a node that timed out twice
+                else do
+                    liftIO . deleteNode inst $ id
+
+                    -- Remove every trace of the node's existance
+                    modify $ \s -> s {
+                          pending = delete node sPending
+                        , known = delete node known
+                        , polled = delete node polled
+                        }
+
+            -- Continue, if there still are pending responses
+            updatedPending <- gets pending
+            if not . null $ updatedPending
+                then waitForReply cancel onCommand sendSignal
+                else cancel
+
+        Closed -> cancel
 
 -- Decide wether, and which node to poll and react appropriately.
 --
@@ -242,7 +280,7 @@ continueLookup nodes sendSignal continue end = do
             return . take 7 . sortByDistanceTo (known ++ polled) $ id
 
 -- Send a signal to a node
-sendSignal :: (Serialize i, Serialize a) => Command i a
+sendSignal :: (Serialize i, Serialize a, Eq i) => Command i a
           -> Node i -> LookupM i a ()
 sendSignal cmd node = do
     h <- fmap handle . gets $ inst
@@ -262,12 +300,8 @@ sendSignal cmd node = do
         , pending = node:pending
         }
 
-    -- Determine the replies appropriate to the command
+    -- Determine the appropriate ReplyRegistrations to the command
     where regs = case cmd of
-                    (FIND_NODE id)  -> [
-                          ReplyRegistration (R_RETURN_NODES id) (nodeId node)
-                        ]
-                    (FIND_VALUE id) -> [
-                          ReplyRegistration (R_RETURN_NODES id) (nodeId node)
-                        , ReplyRegistration (R_RETURN_VALUE id) (nodeId node)
-                        ]
+                    (FIND_NODE id)  -> RR [R_RETURN_NODES id] (nodeId node)
+                    (FIND_VALUE id) ->
+                        RR [R_RETURN_NODES id, R_RETURN_VALUE id] (nodeId node)

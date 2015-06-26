@@ -29,13 +29,12 @@ repliesCheck sig1 sig2 = monadicIO $ do
 
     let (Just replyReg1) = reg1
     let (Just replyReg2) = reg2
-    let regs = [replyReg1, replyReg2]
 
     rq <- run emptyReplyQueue
     chan <- run (newChan :: IO (Chan (Reply IdType String)))
 
-    run $ register regs rq chan
-    run $ register regs rq chan
+    run $ register replyReg1 rq chan
+    run $ register replyReg2 rq chan
 
     run $ dispatch sig1 rq
     run $ dispatch sig2 rq
@@ -65,7 +64,7 @@ removedCheck sig = monadicIO $ do
         -- Discard the test case
         Nothing -> pre False
         Just reg -> do
-            run $ register [reg] rq chan
+            run $ register reg rq chan
 
             run $ dispatch sig rq
 
@@ -83,7 +82,7 @@ flushCheck sig = monadicIO $ do
         -- Discard the test case
         Nothing -> pre False
         Just reg -> do
-            run $ register [reg] rq chan
+            run $ register reg rq chan
             run $ flush rq
 
             sent <- run $ dispatch sig rq
@@ -94,7 +93,7 @@ flushCheck sig = monadicIO $ do
 toRegistration :: Signal i a -> Maybe (ReplyRegistration i)
 toRegistration sig = case rType . command $ sig of
                         Nothing -> Nothing
-                        Just rt -> Just (ReplyRegistration rt origin)
+                        Just rt -> Just (RR [rt] origin)
     where origin = nodeId . source $ sig
 
           rType :: Command i a -> Maybe (ReplyType i)

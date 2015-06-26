@@ -19,6 +19,7 @@ module Network.Kademlia.ReplyQueue
     , flush
     ) where
 
+import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Concurrent.Chan
 import Control.Monad (liftM, forM_)
@@ -37,9 +38,9 @@ data ReplyType i = R_PONG
                  | R_RETURN_NODES i
                    deriving (Eq)
 
--- | The representation of a registered Reply
-data ReplyRegistration i = ReplyRegistration {
-      replyType   :: ReplyType i
+-- | The representation of registered replies
+data ReplyRegistration i = RR {
+      replyTypes  :: [ReplyType i]
     , replyOrigin :: i
     } deriving (Eq)
 
@@ -47,7 +48,7 @@ data ReplyRegistration i = ReplyRegistration {
 toRegistration :: Signal i a -> Maybe (ReplyRegistration i)
 toRegistration sig = case rType . command $ sig of
                         Nothing -> Nothing
-                        Just rt -> Just (ReplyRegistration rt origin)
+                        Just rt -> Just (RR [rt] origin)
     where origin = nodeId . source $ sig
 
           rType :: Command i a -> Maybe (ReplyType i)
@@ -56,24 +57,47 @@ toRegistration sig = case rType . command $ sig of
           rType (RETURN_NODES id _) = Just (R_RETURN_NODES id)
           rType _ = Nothing
 
+-- | Compare wether two ReplyRegistrations match
+matchRegistrations :: (Eq i) => ReplyRegistration i -> ReplyRegistration i -> Bool
+matchRegistrations (RR rtsA idA) (RR rtsB idB) =
+    idA == idB && (all (`elem` rtsA) rtsB || all (`elem` rtsB) rtsA)
+
 -- | The actual type of a replay
 data Reply i a = Answer (Signal i a)
+               | Timeout i
                | Closed
                  deriving (Eq, Show)
 
 -- | The actual type representing a ReplyQueue
-newtype ReplyQueue i a = RQ (TVar [([ReplyRegistration i], Chan (Reply i a))])
+newtype ReplyQueue i a = RQ (TVar [(ReplyRegistration i, Chan (Reply i a), ThreadId)])
 
 -- | Create an empty ReplyQueue
 emptyReplyQueue :: IO (ReplyQueue i a)
 emptyReplyQueue = atomically . liftM RQ $ newTVar []
 
 -- | Register a channel as handler for a reply
-register :: [ReplyRegistration i] -> ReplyQueue i a -> Chan (Reply i a)
+register :: (Eq i) => ReplyRegistration i -> ReplyQueue i a -> Chan (Reply i a)
          -> IO ()
-register regs (RQ rq) chan = atomically $ do
-    queue <- readTVar rq
-    writeTVar rq $ queue ++ [(regs, chan)]
+register reg (RQ rq) chan = do
+    queue <- atomically . readTVar $ rq
+    tId <- timeoutThread chan (replyOrigin reg) (RQ rq)
+    atomically . writeTVar rq $ queue ++ [(reg, chan, tId)]
+
+timeoutThread :: (Eq i) => Chan (Reply i a) -> i -> ReplyQueue i a
+              -> IO ThreadId
+timeoutThread chan id (RQ rq) = forkIO $ do
+    -- Wait 5 seconds
+    threadDelay 5000000
+
+    -- Remove ReplyRegistration from ReplyQueue
+    queue <- atomically . readTVar $ rq
+    myTId <- myThreadId
+    case find (\(_, _, tId) -> tId == myTId) queue of
+        Just reg -> atomically . writeTVar rq $ delete reg queue
+        _ -> return ()
+
+    -- Send Timeout signal
+    writeChan chan . Timeout $ id
 
 -- | Try to send a received Signal over the registered handler channel and
 --   return wether it succeeded
@@ -82,8 +106,11 @@ dispatch sig (RQ rq) = do
     queue <- atomically . readTVar $ rq
     case toRegistration sig of
         Nothing  -> return False
-        Just reg -> case find (\(regs, _) -> reg `elem` regs) queue of
-            Just reg@(_, chan) -> do
+        Just regA -> case find (matches regA) queue of
+            Just reg@(_, chan, tId) -> do
+                -- Kill the timeout thread
+                killThread tId
+
                 -- Send the signal
                 writeChan chan $ Answer sig
 
@@ -91,10 +118,13 @@ dispatch sig (RQ rq) = do
                 atomically . writeTVar rq $ delete reg queue
                 return True
             Nothing -> return False
+    where matches regA (regB, _, _) = matchRegistrations regA regB
 
 -- | Send Closed signal to all handlers and empty ReplyQueue
 flush :: ReplyQueue i a -> IO ()
 flush (RQ rq) = do
     queue <- atomically . readTVar $ rq
-    forM_ queue $ \(_, chan) -> writeChan chan Closed
+    forM_ queue $ \(_, chan, tId) -> do
+        killThread tId
+        writeChan chan Closed
     atomically . writeTVar rq $ []
