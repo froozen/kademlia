@@ -20,13 +20,15 @@ module Network.Kademlia.Instance
 import Control.Concurrent
 import Control.Concurrent.Chan
 import Control.Concurrent.STM
-import Control.Monad (void, forever, when)
+import Control.Monad (void, forever, when, join, forM_, forever)
 import Control.Monad.Trans
 import Control.Monad.Trans.State
 import Control.Monad.Trans.Reader
 import Control.Monad.IO.Class (liftIO)
 import System.IO.Error (catchIOError)
 import qualified Data.Map as M
+import Data.Maybe (catMaybes)
+import Data.Function (on)
 
 import Network.Kademlia.Networking
 import qualified Network.Kademlia.Tree as T
@@ -84,12 +86,13 @@ start :: (Serialize i, Ord i, Serialize a, Eq i, Eq a) =>
 start inst = do
         chan <- newChan
         startRecvProcess (handle inst) chan
-        void . forkIO $ backgroundProcess inst chan
+        pingId <- forkIO . pingProcess inst $ chan
+        void . forkIO $ backgroundProcess inst chan pingId
 
 -- | The actual process running in the background
 backgroundProcess :: (Serialize i, Ord i, Serialize a, Eq i, Eq a) =>
-    KademliaInstance i a -> Chan (Reply i a) -> IO ()
-backgroundProcess inst chan = do
+    KademliaInstance i a -> Chan (Reply i a) -> ThreadId -> IO ()
+backgroundProcess inst chan pingProcessId = do
     reply <- liftIO . readChan $ chan
 
     case reply of
@@ -103,14 +106,28 @@ backgroundProcess inst chan = do
             -- be refreshed
             insertNode inst node
 
-            backgroundProcess inst chan
+            backgroundProcess inst chan pingProcessId
 
         -- Delete timed out nodes
         Timeout registration -> deleteNode inst . replyOrigin $ registration
 
-        -- Stop on Closed
-        Closed -> return ()
+        -- Kill pingProcess and stop on Closed
+        Closed -> killThread pingProcessId
 
+-- | Ping all known nodes every five minutes to make sure they are still present
+pingProcess :: (Serialize i, Serialize a, Eq i) => KademliaInstance i a
+            -> Chan (Reply i a) -> IO ()
+pingProcess (KI h (KS sTree _)) chan = forever $ do
+    threadDelay fiveMinutes
+
+    tree <- atomically . readTVar $ sTree
+    forM_ (allNodes tree) $ \node -> do
+        -- Send PING and expect a PONG
+        send h (peer node) PING
+        expect h (RR [R_PONG] (nodeId node)) $ chan
+
+    where fiveMinutes = 300000000
+          allNodes = join . catMaybes . map snd
 
 -- | Handles the differendt Kademlia Commands appropriately
 handleCommand :: (Serialize i, Eq i, Ord i, Serialize a) =>
