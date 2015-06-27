@@ -31,22 +31,22 @@ import Data.Maybe (isJust, fromJust)
 lookup :: (Serialize i, Serialize a, Eq i, Ord i) => KademliaInstance i a -> i
        -> IO (Maybe a)
 lookup inst id = runLookup go inst id
-    where go = startLookup sendS cancel checkCommand
+    where go = startLookup sendS cancel checkSignal
 
           -- Return Nothing on lookup failure
           cancel = return Nothing
 
           -- When receiving a RETURN_VALUE command, return the value and stop
           -- don't continue the lookup
-          checkCommand (RETURN_VALUE _ value) = return . Just $ value
+          checkSignal (Signal _ (RETURN_VALUE _ value)) = return . Just $ value
 
           -- When receiving a RETURN_NODES command, throw the nodes into the
           -- lookup loop and continue the lookup
-          checkCommand (RETURN_NODES _ nodes) =
+          checkSignal (Signal _ (RETURN_NODES _ nodes)) =
                 continueLookup nodes sendS continue cancel
 
           -- Continuing always means waiting for the next signal
-          continue = waitForReply cancel checkCommand sendS
+          continue = waitForReply cancel checkSignal sendS
 
           -- Send a FIND_VALUE command, looking for the supplied id
           sendS = sendSignal (FIND_VALUE id)
@@ -55,14 +55,14 @@ lookup inst id = runLookup go inst id
 store :: (Serialize i, Serialize a, Eq i, Ord i) =>
          KademliaInstance i a -> i -> a -> IO ()
 store inst key val = runLookup go inst key
-    where go = startLookup sendS end checkCommand
+    where go = startLookup sendS end checkSignal
 
           -- Always add the nodes into the loop and continue the lookup
-          checkCommand (RETURN_NODES _ nodes) =
+          checkSignal (Signal _ (RETURN_NODES _ nodes)) =
                 continueLookup nodes sendS continue end
 
           -- Continuing always means waiting for the next signal
-          continue = waitForReply end checkCommand sendS
+          continue = waitForReply end checkSignal sendS
 
           -- Send a FIND_NODE command, looking for the node corresponding to the
           -- key
@@ -72,6 +72,7 @@ store inst key val = runLookup go inst key
           -- to the key were polled.
           end = do
             polled <- gets polled
+
             unless (null polled) $ do
                 let h = handle inst
                     -- Select the peer closest to the key
@@ -87,7 +88,7 @@ joinNetwork inst node = ownId >>= runLookup go inst
             -- Poll the supplied node
             sendS node
             -- Run a normal lookup from thereon out
-            waitForReply cancel checkCommand sendS
+            waitForReply cancel checkSignal sendS
 
           -- Do nothing upon failure or when the join operation has terminated
           cancel = return ()
@@ -97,11 +98,11 @@ joinNetwork inst node = ownId >>= runLookup go inst
             fmap T.extractId . atomically . readTVar .  sTree . state $ inst
 
           -- Always add the nodes into the loop and continue the lookup
-          checkCommand (RETURN_NODES _ nodes) =
+          checkSignal (Signal _ (RETURN_NODES _ nodes)) =
             continueLookup nodes sendS continue cancel
 
           -- Continuing always means waiting for the next signal
-          continue = waitForReply cancel checkCommand sendS
+          continue = waitForReply cancel checkSignal sendS
 
           -- Send a FIND_NODE command, looking up your own id
           sendS node = liftIO ownId >>= flip sendSignal node . FIND_NODE
@@ -129,8 +130,8 @@ runLookup lookup inst id = do
 
 -- The initial phase of the normal kademlia lookup operation
 startLookup :: (Serialize i, Serialize a, Eq i, Ord i) => (Node i -> LookupM i a ())
-            -> LookupM i a b -> (Command i a -> LookupM i a b) -> LookupM i a b
-startLookup sendSignal cancel onCommand = do
+            -> LookupM i a b -> (Signal i a -> LookupM i a b) -> LookupM i a b
+startLookup sendSignal cancel onSignal = do
     inst <- gets inst
     tree <- liftIO . atomically . readTVar . sTree . state $ inst
     chan <- gets replyChan
@@ -148,13 +149,13 @@ startLookup sendSignal cancel onCommand = do
                 modify $ \s -> s { known = closest }
 
                 -- Start the recursive lookup
-                waitForReply cancel onCommand sendSignal
+                waitForReply cancel onSignal sendSignal
 
 -- Wait for the next reply and handle it appropriately
 waitForReply :: (Serialize i, Serialize a, Ord i) => LookupM i a b
-             -> (Command i a -> LookupM i a b) -> (Node i -> LookupM i a ())
+             -> (Signal i a -> LookupM i a b) -> (Node i -> LookupM i a ())
              -> LookupM i a b
-waitForReply cancel onCommand sendSignal = do
+waitForReply cancel onSignal sendSignal = do
     chan <- gets replyChan
     sPending <- gets pending
     known <- gets known
@@ -172,8 +173,8 @@ waitForReply cancel onCommand sendSignal = do
             -- Remove the node from the list of nodes with pending replies
             modify $ \s -> s { pending = delete node sPending }
 
-            -- Call the command handler
-            onCommand . command $ sig
+            -- Call the signal handler
+            onSignal sig
 
         -- On timeout
         Timeout registration -> do
@@ -196,7 +197,7 @@ waitForReply cancel onCommand sendSignal = do
             -- Continue, if there still are pending responses
             updatedPending <- gets pending
             if not . null $ updatedPending
-                then waitForReply cancel onCommand sendSignal
+                then waitForReply cancel onSignal sendSignal
                 else cancel
 
         Closed -> cancel
