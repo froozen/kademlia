@@ -79,9 +79,10 @@ emptyReplyQueue = atomically . liftM RQ $ newTVar []
 register :: (Eq i) => ReplyRegistration i -> ReplyQueue i a -> Chan (Reply i a)
          -> IO ()
 register reg (RQ rq) chan = do
-    queue <- atomically . readTVar $ rq
     tId <- timeoutThread chan reg (RQ rq)
-    atomically . writeTVar rq $ queue ++ [(reg, chan, tId)]
+    atomically $ do
+        queue <- readTVar $ rq
+        writeTVar rq $ queue ++ [(reg, chan, tId)]
 
 timeoutThread :: (Eq i) => Chan (Reply i a) -> ReplyRegistration i
               -> ReplyQueue i a -> IO ThreadId
@@ -90,12 +91,12 @@ timeoutThread chan reg (RQ rq) = forkIO $ do
     threadDelay 5000000
 
     -- Remove the ReplyRegistration from the ReplyQueue
-    queue <- atomically . readTVar $ rq
     myTId <- myThreadId
-    case find (\(_, _, tId) -> tId == myTId) queue of
-        Just rqElem -> atomically . writeTVar rq $ delete rqElem queue
-
-        _ -> return ()
+    atomically $ do
+        queue <- readTVar $ rq
+        case find (\(_, _, tId) -> tId == myTId) queue of
+            Just rqElem -> writeTVar rq $ delete rqElem queue
+            _ -> return ()
 
     -- Send Timeout signal
     writeChan chan . Timeout $ reg
@@ -104,28 +105,38 @@ timeoutThread chan reg (RQ rq) = forkIO $ do
 --   return wether it succeeded
 dispatch :: (Eq i) => Signal i a -> ReplyQueue i a -> IO Bool
 dispatch sig (RQ rq) = do
-    queue <- atomically . readTVar $ rq
-    case toRegistration sig of
-        Nothing  -> return False
-        Just regA -> case find (matches regA) queue of
-            Just reg@(_, chan, tId) -> do
-                -- Kill the timeout thread
-                killThread tId
+    result <- atomically $ do
+        queue <- readTVar $ rq
+        case toRegistration sig of
+            Just regA -> case find (matches regA) queue of
+                Just reg -> do
+                    -- Remove registration from queue
+                    writeTVar rq $ delete reg queue
+                    return . Just $ reg
 
-                -- Send the signal
-                writeChan chan $ Answer sig
+                Nothing -> return Nothing
+            Nothing  -> return Nothing
 
-                -- Remove registration from queue
-                atomically . writeTVar rq $ delete reg queue
-                return True
-            Nothing -> return False
+    case result of
+        Just (_, chan, tId) -> do
+            -- Kill the timeout thread
+            killThread tId
+
+            -- Send the signal
+            writeChan chan $ Answer sig
+            return True
+        _ -> return False
+
     where matches regA (regB, _, _) = matchRegistrations regA regB
 
 -- | Send Closed signal to all handlers and empty ReplyQueue
 flush :: ReplyQueue i a -> IO ()
 flush (RQ rq) = do
-    queue <- atomically . readTVar $ rq
+    queue <- atomically $ do
+        queue <- readTVar $ rq
+        writeTVar rq $ []
+        return queue
+
     forM_ queue $ \(_, chan, tId) -> do
         killThread tId
         writeChan chan Closed
-    atomically . writeTVar rq $ []
