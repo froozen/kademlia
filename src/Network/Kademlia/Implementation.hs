@@ -114,7 +114,6 @@ data LookupState i a = LookupState {
     , known :: [Node i]
     , pending :: [Node i]
     , polled :: [Node i]
-    , timedOut :: [Node i]
     }
 
 -- | MonadTransformer context of a lookup
@@ -124,7 +123,7 @@ type LookupM i a = StateT (LookupState i a) IO
 runLookup :: LookupM i a b -> KademliaInstance i a -> i ->IO b
 runLookup lookup inst id = do
     chan <- newChan
-    let state = LookupState inst id chan [] [] [] []
+    let state = LookupState inst id chan [] [] []
 
     evalStateT lookup state
 
@@ -178,7 +177,6 @@ waitForReply cancel onCommand sendSignal = do
 
         -- On timeout
         Timeout registration -> do
-            timedOut <- gets timedOut
             let id = replyOrigin registration
 
             -- Find the node corresponding to the id
@@ -187,40 +185,13 @@ waitForReply cancel onCommand sendSignal = do
             -- we can use fromJust
             let node = fromJust . find (\n -> nodeId n == id) $ polled
 
-            -- Node hasn't already timed out once during the lookup
-            if node `notElem` timedOut
-                -- Resend the signal for a node that timed out the for first
-                -- time.
-                --
-                -- This is appropriate, as UDP doesn't guarantee for all the
-                -- packages to arrive, so, because a lookup operation means
-                -- sending a lot of packets at the same time, the fault
-                -- might very well be on out side, therefore a timeout
-                -- doesn't neccessarily mean a disconnect.
-                then do
-                    modify $ \s -> s {
-                          -- Remove the node from the list of pending
-                          -- nodes, as it will be added again when
-                          -- sendSignal is called
-                          pending = delete node sPending
-
-                          -- Add the node to the list of timedOut nodes
-                        , timedOut = node:timedOut
-                        }
-
-                    -- Repoll the node
-                    sendSignal node
-
-                -- Delete a node that timed out twice
-                else do
-                    liftIO . deleteNode inst $ id
-
-                    -- Remove every trace of the node's existance
-                    modify $ \s -> s {
-                          pending = delete node sPending
-                        , known = delete node known
-                        , polled = delete node polled
-                        }
+            -- Remove every trace of the node's existance
+            liftIO . deleteNode inst $ id
+            modify $ \s -> s {
+                  pending = delete node sPending
+                , known = delete node known
+                , polled = delete node polled
+                }
 
             -- Continue, if there still are pending responses
             updatedPending <- gets pending
