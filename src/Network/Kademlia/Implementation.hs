@@ -23,7 +23,7 @@ import Control.Monad.Trans.State hiding (state)
 import Control.Concurrent.Chan
 import Control.Concurrent.STM
 import Control.Monad.IO.Class (liftIO)
-import Data.List (delete, find)
+import Data.List (delete, find, (\\))
 import Data.Maybe (isJust, fromJust)
 
 
@@ -36,9 +36,28 @@ lookup inst id = runLookup go inst id
           -- Return Nothing on lookup failure
           cancel = return Nothing
 
-          -- When receiving a RETURN_VALUE command, return the value and stop
-          -- don't continue the lookup
-          checkSignal (Signal _ (RETURN_VALUE _ value)) = return . Just $ value
+          -- When receiving a RETURN_VALUE command, finish the lookup, then
+          -- cache the value in the closest peer that didn't return it and
+          -- finally return the value
+          checkSignal (Signal origin (RETURN_VALUE _ value)) = do
+                -- Abuse the known list for saving the peers that are *known* to
+                -- store the value
+                modify $ \s -> s { known = [origin] }
+
+                -- Finish the lookup, recording which nodes returned the value
+                finish
+
+                -- Store the value in the closest peer that didn't return the
+                -- value
+                known <- gets known
+                polled <- gets polled
+                let rest = polled \\ known
+                unless (null rest) $ do
+                    let cachePeer = peer . head . sortByDistanceTo rest $ id
+                    liftIO . send (handle inst) cachePeer . STORE id $ value
+
+                -- Return the value
+                return . Just $ value
 
           -- When receiving a RETURN_NODES command, throw the nodes into the
           -- lookup loop and continue the lookup
@@ -50,6 +69,18 @@ lookup inst id = runLookup go inst id
 
           -- Send a FIND_VALUE command, looking for the supplied id
           sendS = sendSignal (FIND_VALUE id)
+
+          -- As long as there still are pending requests, wait for the next one
+          finish = do
+                pending <- gets pending
+                unless (null pending) $ waitForReply (return ()) finishCheck
+
+          -- Record the nodes which return the value
+          finishCheck (Signal origin (RETURN_VALUE _ _)) = do
+                known <- gets known
+                modify $ \s -> s { known = origin:known }
+                finish
+          finishCheck _ = finish
 
 -- Store assign a value to a key and store it in the DHT
 store :: (Serialize i, Serialize a, Eq i, Ord i) =>
