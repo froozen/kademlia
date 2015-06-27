@@ -64,9 +64,9 @@ matchRegistrations (RR rtsA idA) (RR rtsB idB) =
 
 -- | The actual type of a replay
 data Reply i a = Answer (Signal i a)
-               | Timeout i
+               | Timeout (ReplyRegistration i)
                | Closed
-                 deriving (Eq, Show)
+                 deriving (Eq)
 
 -- | The actual type representing a ReplyQueue
 newtype ReplyQueue i a = RQ (TVar [(ReplyRegistration i, Chan (Reply i a), ThreadId)])
@@ -80,24 +80,25 @@ register :: (Eq i) => ReplyRegistration i -> ReplyQueue i a -> Chan (Reply i a)
          -> IO ()
 register reg (RQ rq) chan = do
     queue <- atomically . readTVar $ rq
-    tId <- timeoutThread chan (replyOrigin reg) (RQ rq)
+    tId <- timeoutThread chan reg (RQ rq)
     atomically . writeTVar rq $ queue ++ [(reg, chan, tId)]
 
-timeoutThread :: (Eq i) => Chan (Reply i a) -> i -> ReplyQueue i a
-              -> IO ThreadId
-timeoutThread chan id (RQ rq) = forkIO $ do
+timeoutThread :: (Eq i) => Chan (Reply i a) -> ReplyRegistration i
+              -> ReplyQueue i a -> IO ThreadId
+timeoutThread chan reg (RQ rq) = forkIO $ do
     -- Wait 5 seconds
     threadDelay 5000000
 
-    -- Remove ReplyRegistration from ReplyQueue
+    -- Remove the ReplyRegistration from the ReplyQueue
     queue <- atomically . readTVar $ rq
     myTId <- myThreadId
     case find (\(_, _, tId) -> tId == myTId) queue of
-        Just reg -> atomically . writeTVar rq $ delete reg queue
+        Just rqElem -> atomically . writeTVar rq $ delete rqElem queue
+
         _ -> return ()
 
     -- Send Timeout signal
-    writeChan chan . Timeout $ id
+    writeChan chan . Timeout $ reg
 
 -- | Try to send a received Signal over the registered handler channel and
 --   return wether it succeeded

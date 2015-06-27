@@ -177,8 +177,9 @@ waitForReply cancel onCommand sendSignal = do
             onCommand . command $ sig
 
         -- On timeout
-        Timeout id -> do
+        Timeout registration -> do
             timedOut <- gets timedOut
+            let id = replyOrigin registration
 
             -- Find the node corresponding to the id
             --

@@ -106,7 +106,7 @@ backgroundProcess inst chan = do
             backgroundProcess inst chan
 
         -- Delete timed out nodes
-        Timeout id -> deleteNode inst id
+        Timeout registration -> deleteNode inst . replyOrigin $ registration
 
         -- Stop on Closed
         Closed -> return ()
