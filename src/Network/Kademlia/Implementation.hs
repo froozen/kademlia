@@ -46,7 +46,7 @@ lookup inst id = runLookup go inst id
                 continueLookup nodes sendS continue cancel
 
           -- Continuing always means waiting for the next signal
-          continue = waitForReply cancel checkSignal sendS
+          continue = waitForReply cancel checkSignal
 
           -- Send a FIND_VALUE command, looking for the supplied id
           sendS = sendSignal (FIND_VALUE id)
@@ -62,7 +62,7 @@ store inst key val = runLookup go inst key
                 continueLookup nodes sendS continue end
 
           -- Continuing always means waiting for the next signal
-          continue = waitForReply end checkSignal sendS
+          continue = waitForReply end checkSignal
 
           -- Send a FIND_NODE command, looking for the node corresponding to the
           -- key
@@ -88,7 +88,7 @@ joinNetwork inst node = ownId >>= runLookup go inst
             -- Poll the supplied node
             sendS node
             -- Run a normal lookup from thereon out
-            waitForReply cancel checkSignal sendS
+            waitForReply cancel checkSignal
 
           -- Do nothing upon failure or when the join operation has terminated
           cancel = return ()
@@ -102,7 +102,7 @@ joinNetwork inst node = ownId >>= runLookup go inst
             continueLookup nodes sendS continue cancel
 
           -- Continuing always means waiting for the next signal
-          continue = waitForReply cancel checkSignal sendS
+          continue = waitForReply cancel checkSignal
 
           -- Send a FIND_NODE command, looking up your own id
           sendS node = liftIO ownId >>= flip sendSignal node . FIND_NODE
@@ -149,13 +149,12 @@ startLookup sendSignal cancel onSignal = do
                 modify $ \s -> s { known = closest }
 
                 -- Start the recursive lookup
-                waitForReply cancel onSignal sendSignal
+                waitForReply cancel onSignal
 
 -- Wait for the next reply and handle it appropriately
 waitForReply :: (Serialize i, Serialize a, Ord i) => LookupM i a b
-             -> (Signal i a -> LookupM i a b) -> (Node i -> LookupM i a ())
-             -> LookupM i a b
-waitForReply cancel onSignal sendSignal = do
+             -> (Signal i a -> LookupM i a b) -> LookupM i a b
+waitForReply cancel onSignal = do
     chan <- gets replyChan
     sPending <- gets pending
     known <- gets known
@@ -197,7 +196,7 @@ waitForReply cancel onSignal sendSignal = do
             -- Continue, if there still are pending responses
             updatedPending <- gets pending
             if not . null $ updatedPending
-                then waitForReply cancel onSignal sendSignal
+                then waitForReply cancel onSignal
                 else cancel
 
         Closed -> cancel
