@@ -10,7 +10,10 @@ for easy integration of the DHT-technology into applications.
 The library is build after the original [Kademlia Paper][paper_kademlia] and
 [this specification][spec_kademlia].
 
+For more information, take a look at the libraries [hackage page][hackage].
+
 [wiki_kademlia]: https://en.wikipedia.org/wiki/Kademlia
 [wiki_dht]: https://en.wikipedia.org/wiki/Distributed_hash_table
 [paper_kademlia]: http://pdos.csail.mit.edu/~petar/papers/maymounkov-kademlia-lncs.pdf
 [spec_kademlia]: http://xlattice.sourceforge.net/components/protocol/kademlia/specs.html
+[hackage]: https://hackage.haskell.org/package/kademlia-1.0.0.0
