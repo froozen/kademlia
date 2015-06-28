@@ -111,7 +111,7 @@ store inst key val = runLookup go inst key
                 -- Send it a STORE command
                 liftIO . send h storePeer . STORE key $ val
 
--- Make a KademliaInstance join the network a supplied Node is in
+-- | Make a KademliaInstance join the network a supplied Node is in
 joinNetwork :: (Serialize i, Serialize a, Eq i, Ord i) => KademliaInstance i a
             -> Node i -> IO ()
 joinNetwork inst node = ownId >>= runLookup go inst

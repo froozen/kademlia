@@ -72,7 +72,7 @@ sendProcess sock id chan = (withSocketsDo . forever $ do
     -- Send the signal
     let sig = serialize id cmd
     S.sendTo sock sig (addrAddress peeraddr))
-        -- | Close socket on exception (ThreadKilled)
+        -- Close socket on exception (ThreadKilled)
         `finally` sClose sock
 
 -- | Dispatch the receiving process
@@ -125,10 +125,10 @@ expect kh reg = register reg . replyQueue $ kh
 -- | Close the connection corresponding to a KademliaHandle
 closeK :: KademliaHandle i a -> IO ()
 closeK kh = do
-    -- | Kill sendThread
+    -- Kill sendThread
     killThread . sendThread $ kh
 
-    -- | Kill recvThread
+    -- Kill recvThread
     empty <- isEmptyMVar . recvThread $ kh
     unless empty $ do
         tId <- takeMVar . recvThread $ kh
