@@ -87,12 +87,13 @@ start inst = do
         chan <- newChan
         startRecvProcess (handle inst) chan
         pingId <- forkIO . pingProcess inst $ chan
-        void . forkIO $ backgroundProcess inst chan pingId
+        spreadId <- forkIO . spreadValueProcess $ inst
+        void . forkIO $ backgroundProcess inst chan [pingId, spreadId]
 
 -- | The actual process running in the background
 backgroundProcess :: (Serialize i, Ord i, Serialize a, Eq i, Eq a) =>
-    KademliaInstance i a -> Chan (Reply i a) -> ThreadId -> IO ()
-backgroundProcess inst chan pingProcessId = do
+    KademliaInstance i a -> Chan (Reply i a) -> [ThreadId] -> IO ()
+backgroundProcess inst chan threadIds = do
     reply <- liftIO . readChan $ chan
 
     case reply of
@@ -106,13 +107,13 @@ backgroundProcess inst chan pingProcessId = do
             -- be refreshed
             insertNode inst node
 
-            backgroundProcess inst chan pingProcessId
+            backgroundProcess inst chan threadIds
 
         -- Delete timed out nodes
         Timeout registration -> deleteNode inst . replyOrigin $ registration
 
         -- Kill pingProcess and stop on Closed
-        Closed -> killThread pingProcessId
+        Closed -> mapM_ killThread threadIds
 
 -- | Ping all known nodes every five minutes to make sure they are still present
 pingProcess :: (Serialize i, Serialize a, Eq i) => KademliaInstance i a
@@ -128,6 +129,25 @@ pingProcess (KI h (KS sTree _)) chan = forever $ do
 
     where fiveMinutes = 300000000
           allNodes = join . catMaybes . map snd
+
+-- | Store all values stored in the node in the 7 closest known nodes every day
+spreadValueProcess :: (Serialize i, Serialize a, Eq i) => KademliaInstance i a
+                   -> IO ()
+spreadValueProcess (KI h (KS sTree sValues)) = forever $ do
+    threadDelay day
+
+    values <- atomically . readTVar $ sValues
+    tree <- atomically . readTVar $ sTree
+
+    mapMWithKey (sendRequests tree) $ values
+
+    where day = 24 * 60 * 60 * 1000000
+          sendRequests tree key val = do
+            let closest = T.findClosest tree key 7
+            forM_ closest $ \node -> send h (peer node) (STORE key val)
+
+          mapMWithKey :: (k -> v -> IO a) -> M.Map k v -> IO [a]
+          mapMWithKey f m = sequence . map snd . M.toList . M.mapWithKey f $ m
 
 -- | Handles the differendt Kademlia Commands appropriately
 handleCommand :: (Serialize i, Eq i, Ord i, Serialize a) =>
