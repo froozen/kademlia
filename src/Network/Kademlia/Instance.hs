@@ -130,18 +130,18 @@ pingProcess (KI h (KS sTree _)) chan = forever $ do
     where fiveMinutes = 300000000
           allNodes = join . catMaybes . map snd
 
--- | Store all values stored in the node in the 7 closest known nodes every day
+-- | Store all values stored in the node in the 7 closest known nodes every hour
 spreadValueProcess :: (Serialize i, Serialize a, Eq i) => KademliaInstance i a
                    -> IO ()
 spreadValueProcess (KI h (KS sTree sValues)) = forever $ do
-    threadDelay day
+    threadDelay hour
 
     values <- atomically . readTVar $ sValues
     tree <- atomically . readTVar $ sTree
 
     mapMWithKey (sendRequests tree) $ values
 
-    where day = 24 * 60 * 60 * 1000000
+    where hour = 60 * 60 * 1000000
           sendRequests tree key val = do
             let closest = T.findClosest tree key 7
             forM_ closest $ \node -> send h (peer node) (STORE key val)
