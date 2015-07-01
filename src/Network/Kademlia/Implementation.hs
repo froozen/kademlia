@@ -106,10 +106,15 @@ store inst key val = runLookup go inst key
 
             unless (null polled) $ do
                 let h = handle inst
-                    -- Select the peer closest to the key
-                    storePeer = peer . head . sortByDistanceTo polled $ key
-                -- Send it a STORE command
-                liftIO . send h storePeer . STORE key $ val
+                    -- Don't select more than 7 peers
+                    peerNum = if length polled > 7 then 7 else length polled
+                    -- Select the peers closest to the key
+                    storePeers =
+                        map peer . take peerNum . sortByDistanceTo polled $ key
+
+                -- Send them a STORE command
+                forM_ storePeers $
+                    \storePeer -> liftIO . send h storePeer . STORE key $ val
 
 -- | Make a KademliaInstance join the network a supplied Node is in
 joinNetwork :: (Serialize i, Serialize a, Eq i, Ord i) => KademliaInstance i a
