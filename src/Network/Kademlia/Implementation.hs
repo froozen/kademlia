@@ -222,7 +222,6 @@ waitForReply cancel onSignal = do
             let node = fromJust . find (\n -> nodeId n == id) $ polled
 
             -- Remove every trace of the node's existance
-            liftIO . deleteNode inst $ id
             modify $ \s -> s {
                   pending = delete node sPending
                 , known = delete node known

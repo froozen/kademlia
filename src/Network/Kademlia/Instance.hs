@@ -93,12 +93,15 @@ start inst rq = do
         void . forkIO $ backgroundProcess inst dChan [pingId, spreadId, receivingId]
 
 -- | The central process all Replys go trough
-receivingProcess :: (Serialize i, Serialize a, Eq i) =>
+receivingProcess :: (Serialize i, Serialize a, Eq i, Ord i) =>
     KademliaInstance i a -> ReplyQueue i a -> Chan (Reply i a) -> IO ()
 receivingProcess inst rq chan = forever $ do
     reply <- readChan chan
 
     case reply of
+        -- Delete a node that timed out
+        Timeout registration -> deleteNode inst . replyOrigin $ registration
+
         _ -> return ()
 
     dispatch reply rq
@@ -123,11 +126,10 @@ backgroundProcess inst chan threadIds = do
 
             backgroundProcess inst chan threadIds
 
-        -- Delete timed out nodes
-        Timeout registration -> deleteNode inst . replyOrigin $ registration
-
         -- Kill pingProcess and stop on Closed
         Closed -> mapM_ killThread threadIds
+
+        _ -> return ()
 
 -- | Ping all known nodes every five minutes to make sure they are still present
 pingProcess :: (Serialize i, Serialize a, Eq i) => KademliaInstance i a
