@@ -82,13 +82,27 @@ lookupValue key (KI _ (KS _ values)) = atomically $ do
 
 -- | Start the background process for a KademliaInstance
 start :: (Serialize i, Ord i, Serialize a, Eq i, Eq a) =>
-    KademliaInstance i a -> IO ()
-start inst = do
-        chan <- newChan
-        startRecvProcess (handle inst) chan
-        pingId <- forkIO . pingProcess inst $ chan
+         KademliaInstance i a -> ReplyQueue i a -> IO ()
+start inst rq = do
+        startRecvProcess . handle $ inst
+        let rChan = timeoutChan rq
+            dChan = defaultChan rq
+        receivingId <- forkIO . receivingProcess inst rq $ rChan
+        pingId <- forkIO . pingProcess inst $ dChan
         spreadId <- forkIO . spreadValueProcess $ inst
-        void . forkIO $ backgroundProcess inst chan [pingId, spreadId]
+        void . forkIO $ backgroundProcess inst dChan [pingId, spreadId, receivingId]
+
+-- | The central process all Replys go trough
+receivingProcess :: (Serialize i, Serialize a, Eq i) =>
+    KademliaInstance i a -> ReplyQueue i a -> Chan (Reply i a) -> IO ()
+receivingProcess inst rq chan = forever $ do
+    reply <- readChan chan
+
+    case reply of
+        _ -> return ()
+
+    dispatch reply rq
+
 
 -- | The actual process running in the background
 backgroundProcess :: (Serialize i, Ord i, Serialize a, Eq i, Eq a) =>

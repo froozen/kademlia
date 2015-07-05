@@ -13,7 +13,9 @@ import Test.QuickCheck.Monadic
 import Network.Kademlia.Networking
 import Network.Kademlia.Types
 import Network.Kademlia.ReplyQueue
+import Control.Monad
 import Control.Concurrent.Chan
+import Control.Concurrent.STM
 import qualified Data.ByteString.Char8 as C
 import Data.Maybe (isJust)
 
@@ -33,16 +35,18 @@ valueSet = do
 sendCheck = monadicIO $ do
     (pA, pB, idA, idB) <- valueSet
 
-    khA <- run $ openOn "1122" idA
-    khB <- run $ openOn "1123" idB
+    rqA <- run emptyReplyQueue
+    rqB <- run emptyReplyQueue
 
-    chan <- run (newChan :: IO (Chan (Reply IdType String)))
-    run $ startRecvProcess khB chan
+    khA <- run $ openOn "1122" idA rqA
+    khB <- run $ (openOn "1123" idB rqB :: IO (KademliaHandle IdType String))
+
+    run $ startRecvProcess khB
 
     cmd <- pick (arbitrary :: Gen (Command IdType String))
 
     run $ send khA pB cmd
-    (Answer sig) <- run (readChan chan :: IO (Reply IdType String))
+    (Answer sig) <- run (readChan . timeoutChan $ rqB :: IO (Reply IdType String))
 
     run $ closeK khA
     run $ closeK khB
@@ -57,32 +61,28 @@ sendCheck = monadicIO $ do
 expectCheck = monadicIO $ do
     (pA, pB, idA, idB) <- valueSet
 
-    cmd <- pick (arbitrary :: Gen (Command IdType String))
+    sig <- pick (arbitrary :: Gen (Signal IdType String))
 
-    let rtM = rType cmd
+    let rtM = rType . command $ sig
     pre . isJust $ rtM
     let (Just rt) = rtM
-        rr = RR [rt] idA
+        rr = RR [rt] . nodeId . source $ sig
 
-    khA <- run $ openOn "1122" idA
-    khB <- run $ openOn "1123" idB
+    rqA <- run emptyReplyQueue
 
-    chanA <- run (newChan :: IO (Chan (Reply IdType String)))
-    chanB <- run (newChan :: IO (Chan (Reply IdType String)))
-    run $ startRecvProcess khB chanA
+    khA <- run $ openOn "1122" idA rqA
 
-    run $ expect khB rr chanB
-    run $ send khA pB cmd
-    (Answer sig) <- run (readChan chanB :: IO (Reply IdType String))
+    run $ startRecvProcess khA
+
+    testChan <- run (newChan :: IO (Chan (Reply IdType String)))
+    run $ expect khA rr testChan
+    run $ dispatch (Answer sig) rqA
+
+    (Answer replySig) <- run (readChan testChan :: IO (Reply IdType String))
 
     run $ closeK khA
-    run $ closeK khB
 
-    assert $ command sig == cmd
-    assert $ (peer . source $ sig) == pA
-    assert $ (nodeId . source $ sig) == idA
-
-    return ()
+    assert $ replySig == sig
 
 -- | Convert a command into a ReplyType
 rType :: Command i a -> Maybe (ReplyType i)

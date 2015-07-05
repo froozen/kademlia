@@ -41,8 +41,9 @@ data KademliaHandle i a = KH {
 
 -- | Open a Kademlia connection on specified port and return a corresponding
 --   KademliaHandle
-openOn :: (Serialize i, Serialize a) => String -> i -> IO (KademliaHandle i a)
-openOn port id = withSocketsDo $ do
+openOn :: (Serialize i, Serialize a) => String -> i -> ReplyQueue i a
+       -> IO (KademliaHandle i a)
+openOn port id rq = withSocketsDo $ do
     -- Get addr to bind to
     (serveraddr:_) <- getAddrInfo
                  (Just (defaultHints {addrFlags = [AI_PASSIVE]}))
@@ -54,7 +55,6 @@ openOn port id = withSocketsDo $ do
 
     chan <- newChan
     tId <- forkIO . sendProcess sock id $ chan
-    rq <- emptyReplyQueue
     mvar <- newEmptyMVar
 
     -- Return the handle
@@ -82,8 +82,8 @@ sendProcess sock id chan = (withSocketsDo . forever $ do
 --
 --   This throws an exception if called a second time.
 startRecvProcess :: (Serialize i, Serialize a, Eq i, Eq a) => KademliaHandle i a
-                 -> Chan (Reply i a) -> IO ()
-startRecvProcess kh defaultChan = do
+                 -> IO ()
+startRecvProcess kh = do
     tId <- forkIO $ (withSocketsDo . forever $ do
         -- Read from socket
         (received, addr) <- S.recvFrom (kSock kh) 1500
@@ -95,18 +95,14 @@ startRecvProcess kh defaultChan = do
                 -- Try parsing the signal
                 case parse p received of
                     Left _    -> return ()
-                    Right sig -> do
-                        -- Try to dispatch the signal
-                        success <- dispatch sig $ replyQueue kh
-
-                        unless success $
-                            -- Send it to the default channel
-                            writeChan defaultChan $ Answer sig)
+                    Right sig ->
+                        -- Send the signal to the receivng process of instance
+                        writeChan (timeoutChan . replyQueue $ kh) $ Answer sig)
 
             -- Send Closed reply to all handlers
             `finally` do
                 flush . replyQueue $ kh
-                writeChan defaultChan  Closed
+                writeChan (timeoutChan . replyQueue $ kh) Closed
 
     success <- tryPutMVar (recvThread kh) tId
     unless success . ioError . userError $ "Receiving process already running"

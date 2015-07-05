@@ -36,8 +36,8 @@ repliesCheck sig1 sig2 = monadicIO $ do
     run $ register replyReg1 rq chan
     run $ register replyReg2 rq chan
 
-    run $ dispatch sig1 rq
-    run $ dispatch sig2 rq
+    run $ dispatch (Answer sig1) rq
+    run $ dispatch (Answer sig2) rq
 
     contents <- run $ getChanContents chan
     assert . not . null $ contents
@@ -66,28 +66,10 @@ removedCheck sig = monadicIO $ do
         Just reg -> do
             run $ register reg rq chan
 
-            run $ dispatch sig rq
+            run $ dispatch (Answer sig) rq
 
-            removed <- run $ dispatch sig rq
-            assert . not $ removed
-
--- | Check wether flushing works as expected
-flushCheck :: Signal IdType String -> Property
-flushCheck sig = monadicIO $ do
-    rq <- run emptyReplyQueue
-    chan <- run (newChan :: IO (Chan (Reply IdType String)))
-
-    let reg = toRegistration sig
-    case reg of
-        -- Discard the test case
-        Nothing -> pre False
-        Just reg -> do
-            run $ register reg rq chan
-            run $ flush rq
-
-            sent <- run $ dispatch sig rq
-
-            assert . not $ sent
+            removed <- run $ fmap null (atomically . readTVar . queue $ rq)
+            assert removed
 
 -- | Convert a Signal into its ReplyRegistration representation
 toRegistration :: Signal i a -> Maybe (ReplyRegistration i)

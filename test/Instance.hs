@@ -42,14 +42,15 @@ handlesPingCheck = do
     let (Right (idB, _)) = fromBS . C.replicate 32 $ 'b'
                            :: Either String (IdType, C.ByteString)
 
-    khA <- openOn "1122" idA :: IO (KademliaHandle IdType String)
+    rq <- emptyReplyQueue
+
+    khA <- openOn "1122" idA rq :: IO (KademliaHandle IdType String)
     kiB <- create 1123 idB   :: IO (KademliaInstance IdType String)
 
-    chan <- newChan
-    startRecvProcess khA chan
+    startRecvProcess khA
 
     send khA pB PING
-    (Answer sig) <- readChan chan :: IO (Reply IdType String)
+    (Answer sig) <- readChan . timeoutChan $ rq :: IO (Reply IdType String)
 
     closeK khA
     close kiB
@@ -66,16 +67,17 @@ storeAndFindValueCheck key value = monadicIO $ do
     let (pA, pB) = peers
     (idA, idB) <- ids
 
-    khA <- run $ openOn "1122" idA
+    rq <- run emptyReplyQueue
+
+    khA <- run $ openOn "1122" idA rq
     kiB <- run $ create 1123 idB :: PropertyM IO (KademliaInstance IdType String)
 
-    chan <- run newChan
-    run $ startRecvProcess khA chan
+    run $ startRecvProcess khA
 
     run $ send khA pB $ STORE key value
     run $ send khA pB $ FIND_VALUE key
 
-    (Answer sig) <- run (readChan chan :: IO (Reply IdType String))
+    (Answer sig) <- run (readChan . timeoutChan $ rq :: IO (Reply IdType String))
 
     run $ closeK khA
     run $ close kiB

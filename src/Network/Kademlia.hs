@@ -128,9 +128,10 @@ import Control.Concurrent.STM
 create :: (Serialize i, Ord i, Serialize a, Eq a, Eq i) =>
     Int -> i -> IO (KademliaInstance i a)
 create port id = do
-    h <- openOn (show port) id
+    rq <- emptyReplyQueue
+    h <- openOn (show port) id rq
     inst <- newInstance id h
-    start inst
+    start inst rq
     return inst
 
 -- | Make a KademliaInstance join the network the supplied Node is a part of
