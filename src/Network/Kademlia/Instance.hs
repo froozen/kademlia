@@ -22,13 +22,15 @@ import Control.Concurrent.Chan
 import Control.Concurrent.STM
 import Control.Monad (void, forever, when, join, forM_, forever)
 import Control.Monad.Trans
-import Control.Monad.Trans.State
+import Control.Monad.Trans.State hiding (state)
 import Control.Monad.Trans.Reader
 import Control.Monad.IO.Class (liftIO)
+import Control.Applicative ((<$>), (<*>))
 import System.IO.Error (catchIOError)
 import qualified Data.Map as M
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, isJust)
 import Data.Function (on)
+import Data.Map (toList)
 
 import Network.Kademlia.Networking
 import qualified Network.Kademlia.Tree as T
@@ -102,9 +104,32 @@ receivingProcess inst rq chan = forever $ do
         -- Delete a node that timed out
         Timeout registration -> deleteNode inst . replyOrigin $ registration
 
+        -- Store values in newly encountered nodes that you are the closest to
+        Answer (Signal node _) -> do
+            let originId = nodeId node
+            tree <- retrieve sTree
+
+            -- This node is not yet known
+            when (not . isJust . T.lookup tree $ originId) $ do
+                let closestKnown = T.findClosest tree originId 1
+                    ownId = T.extractId tree
+                    self = node { nodeId = ownId }
+                    bucket = self:closestKnown
+                    -- Find out closest known node
+                    closestId = nodeId . head . sortByDistanceTo bucket $ originId
+
+                -- This node can be assumed to be closest to the new node
+                when (ownId == closestId) $ do
+                    storedValues <- toList <$> retrieve values
+                    let h = handle inst
+                        p = peer node
+                    -- Store all stored values in the new node
+                    forM_ storedValues (send h p . uncurry STORE)
+
         _ -> return ()
 
     dispatch reply rq
+    where retrieve f = atomically . readTVar . f . state $ inst
 
 
 -- | The actual process running in the background
