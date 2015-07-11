@@ -41,9 +41,7 @@ splitCheck :: NodeBunch IdType -> IdType -> Property
 splitCheck = withTree f
     where f tree nodes = conjoin . foldr (foldingFunc tree) [] $ nodes
 
-          ((_, Nothing):_) `contains` node = False
-          ((_, Just b):xs) `contains` node = node `elem` b
-                                              || xs `contains` node
+          tree `contains` node = node `elem` T.toList tree
 
           foldingFunc tree node props = prop : props
             where prop =
@@ -54,21 +52,19 @@ splitCheck = withTree f
 
 -- | Make sure the bucket sizes end up correct
 bucketSizeCheck :: NodeBunch IdType -> IdType -> Bool
-bucketSizeCheck = withTree $ \tree _ -> foldr foldingFunc True tree
-    where foldingFunc _ False        = False
-          foldingFunc (_, Nothing) _ = True
-          foldingFunc (_, Just b)  _ = length b <= 7
+bucketSizeCheck = withTree $ \tree _ -> T.fold foldingFunc True tree
+    where foldingFunc _ False = False
+          foldingFunc b  _    = length b <= 7
 
 -- | Make sure refreshed Nodes are actually refreshed
 refreshCheck :: NodeBunch IdType -> IdType -> Bool
 refreshCheck = withTree f
-    where f tree nodes = foldr foldingFunc True refreshed
-            where refreshed = T.refresh tree . nodeId $ node
+    where f tree nodes = T.fold foldingFunc True refreshed
+            where refreshed = T.insert tree node
                   node = last nodes
-                  foldingFunc  _  False      = False
-                  foldingFunc (_, Nothing) _ = True
-                  foldingFunc (_, Just bk) _ = node `notElem` bk
-                                            || head bk == node
+                  foldingFunc _  False = False
+                  foldingFunc b _      = node `notElem` b
+                                         || head b == node
 
 -- | Make sure findClosest returns the Node with the closest Ids of all nodes
 --   in the tree.

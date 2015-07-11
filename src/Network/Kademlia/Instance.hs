@@ -163,13 +163,12 @@ pingProcess (KI h (KS sTree _)) chan = forever $ do
     threadDelay fiveMinutes
 
     tree <- atomically . readTVar $ sTree
-    forM_ (allNodes tree) $ \node -> do
+    forM_ (T.toList tree) $ \node -> do
         -- Send PING and expect a PONG
         send h (peer node) PING
         expect h (RR [R_PONG] (nodeId node)) $ chan
 
     where fiveMinutes = 300000000
-          allNodes = join . catMaybes . map snd
 
 -- | Store all values stored in the node in the 7 closest known nodes every hour
 spreadValueProcess :: (Serialize i, Serialize a, Eq i) => KademliaInstance i a

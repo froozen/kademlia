@@ -40,9 +40,7 @@ joinCheck idBunch = monadicIO $ do
 
     where filled inst = do
             tree <- atomically . readTVar . sTree . state $ inst
-            return $ treeSize tree >= 7
-          treeSize = foldr treeCount 0
-          treeCount (_, segment) total = total + (length . fromMaybe [] $ segment)
+            return $ (length . T.toList $ tree) >= 7
 
 storeAndLookupCheck :: IdBunch IdType -> IdBunch IdType -> Property
 storeAndLookupCheck ids keys = monadicIO $ do

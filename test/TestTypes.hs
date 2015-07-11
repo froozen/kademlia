@@ -20,7 +20,11 @@ import Data.Function (on)
 
 import Network.Kademlia.Types
 
-newtype IdType = IT { getBS :: B.ByteString } deriving (Eq, Show, Ord)
+newtype IdType = IT { getBS :: B.ByteString } deriving (Eq, Ord)
+
+-- Custom show instance
+instance Show IdType where
+    show = show . C.unpack . getBS
 
 -- A simple 5-byte ByteString
 instance Serialize IdType where
