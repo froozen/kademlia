@@ -13,7 +13,6 @@ module Network.Kademlia.Instance
     , start
     , newInstance
     , insertNode
-    , deleteNode
     , lookupNode
     ) where
 
@@ -62,10 +61,12 @@ insertNode (KI _ (KS sTree _)) node = atomically $ do
     tree <- readTVar sTree
     writeTVar sTree . T.insert tree $ node
 
-deleteNode :: (Serialize i, Ord i) => KademliaInstance i a -> i -> IO ()
-deleteNode (KI _ (KS sTree _)) id = atomically $ do
+timeoutNode :: (Serialize i, Ord i) => KademliaInstance i a -> i -> IO Bool
+timeoutNode (KI _ (KS sTree _)) id = atomically $ do
     tree <- readTVar sTree
-    writeTVar sTree . T.delete tree $ id
+    let (newTree, pingAgain) = T.handleTimeout tree id
+    writeTVar sTree newTree
+    return pingAgain
 
 lookupNode :: (Serialize i, Ord i) => KademliaInstance i a -> i -> IO (Maybe (Node i))
 lookupNode (KI _ (KS sTree _)) id = atomically $ do
@@ -89,20 +90,36 @@ start inst rq = do
         startRecvProcess . handle $ inst
         let rChan = timeoutChan rq
             dChan = defaultChan rq
-        receivingId <- forkIO . receivingProcess inst rq $ rChan
+        receivingId <- forkIO . receivingProcess inst rq rChan $ dChan
         pingId <- forkIO . pingProcess inst $ dChan
         spreadId <- forkIO . spreadValueProcess $ inst
         void . forkIO $ backgroundProcess inst dChan [pingId, spreadId, receivingId]
 
 -- | The central process all Replys go trough
 receivingProcess :: (Serialize i, Serialize a, Eq i, Ord i) =>
-    KademliaInstance i a -> ReplyQueue i a -> Chan (Reply i a) -> IO ()
-receivingProcess inst rq chan = forever $ do
-    reply <- readChan chan
+       KademliaInstance i a -> ReplyQueue i a -> Chan (Reply i a)
+    -> Chan (Reply i a)-> IO ()
+receivingProcess inst rq replyChan registerChan = forever $ do
+    reply <- readChan replyChan
 
     case reply of
-        -- Delete a node that timed out
-        Timeout registration -> deleteNode inst . replyOrigin $ registration
+        -- Handle a timed out node
+        Timeout registration -> do
+            let origin = replyOrigin registration
+                h = handle inst
+                newRegistration = registration { replyTypes = [R_PONG] }
+
+            -- Mark the node as timed out
+            pingAgain <- timeoutNode inst origin
+            -- If the node should be repinged
+            when pingAgain $ do
+                result <- lookupNode inst origin
+                case result of
+                    Nothing -> return ()
+                    Just node -> do
+                        -- Ping the node
+                        send h (peer node) PING
+                        expect h newRegistration registerChan
 
         -- Store values in newly encountered nodes that you are the closest to
         Answer (Signal node _) -> do

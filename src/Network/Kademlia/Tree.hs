@@ -14,7 +14,7 @@ module Network.Kademlia.Tree
     , insert
     , lookup
     , delete
-    , refresh
+    , handleTimeout
     , findClosest
     , extractId
     , toList
@@ -28,9 +28,9 @@ import qualified Data.List as L (find, delete)
 data NodeTree i = NodeTree ByteStruct (NodeTreeElem i)
 
 data NodeTreeElem i = Split (NodeTreeElem i) (NodeTreeElem i)
-                    | Bucket [Node i]
+                    | Bucket [(Node i, Int)]
 
-type NodeTreeFunction i a = Int -> Bool -> [Node i] -> a
+type NodeTreeFunction i a = Int -> Bool -> [(Node i, Int)] -> a
 
 -- | Modify the position in the tree where the supplied id would be
 modifyAt :: (Serialize i) =>
@@ -55,6 +55,30 @@ modifyAt (NodeTree idStruct elem) id f =
                let new = go is ts (depth + 1) (valid && i) right
                in  Split left new
 
+-- | Modify and apply a function at the position in the tree where the
+--   supplied id would be
+bothAt :: (Serialize i) =>
+            NodeTree i -> i -> NodeTreeFunction i (NodeTreeElem i, a)
+         -> (NodeTree i, a)
+bothAt (NodeTree idStruct elem) id f =
+    let targetStruct    = toByteStruct id
+        (newElems, val) = go idStruct targetStruct 0 True elem
+    in  (NodeTree idStruct newElems, val)
+    where -- This function is partial, but we know that there will alwasys be a
+          -- bucket at the end. Therefore, we don't have to check for empty
+          -- ByteStructs
+          --
+          -- Apply the function to the position of the bucket
+          go _ _ depth valid (Bucket b) = f depth valid b
+          -- If the bit is a 0, go left
+          go (i:is) (False:ts) depth valid (Split left right) =
+               let (new, val) = go is ts (depth + 1) (valid && not i) left
+               in  (Split new right, val)
+          -- Otherwise, continue to the right
+          go (i:is) (True:ts) depth valid (Split left right) =
+               let (new, val) = go is ts (depth + 1) (valid && i) right
+               in  (Split left new, val)
+
 -- | Apply a function to the bucket the supplied id would be located in
 applyAt :: (Serialize i) => NodeTree i -> i -> NodeTreeFunction i a -> a
 applyAt (NodeTree idStruct elem) id f =
@@ -78,18 +102,34 @@ create id = NodeTree (toByteStruct id) . Bucket $ []
 -- | Lookup a node within a NodeTree
 lookup :: (Serialize i, Eq i) => NodeTree i -> i -> Maybe (Node i)
 lookup tree id = applyAt tree id f
-    where f _ _ = L.find $ idMatches id
+    where f _ _ = L.find (idMatches id) . map fst
 
 -- | Delete a Node corresponding to a supplied Id from a NodeTree
 delete :: (Serialize i, Eq i) => NodeTree i -> i -> NodeTree i
 delete tree id = modifyAt tree id f
-    where f _ _ = Bucket . filter (not . idMatches id)
+    where f _ _ = Bucket . filter (not . idMatches id . fst)
+
+-- | Handle a timed out node by incrementing its timeoutCount and deleting it
+--  if the count exceeds the limit. Also, return wether it's reasonable to ping
+--  the node again.
+handleTimeout :: (Serialize i, Eq i) => NodeTree i -> i -> (NodeTree i, Bool)
+handleTimeout tree id = bothAt tree id f
+    where f _ _ b = case L.find (idMatches id . fst) b of
+            -- Delete a node that exceeded the limit. Don't contact it again
+            --   as it is now considered dead
+            Just x@(_, 4) -> (Bucket . L.delete x $ b, False)
+            -- Increment the timeoutCount
+            Just x@(n, timeoutCount) ->
+                 (Bucket $ (n, timeoutCount + 1) : L.delete x b, True)
+            -- Don't contact an unknown node a second time
+            Nothing -> (Bucket b, False)
 
 -- | Refresh the node corresponding to a supplied Id by placing it at the first
---   index of it's KBucket and return a Bucket NodeTreeElem
-refresh :: (Serialize i, Eq i) => Node i -> [Node i] -> NodeTreeElem i
-refresh node b = Bucket $ case L.find (idMatches . nodeId $ node) b of
-                    Just _ -> node : L.delete node b
+--   index of it's KBucket and reseting its timeoutCount, then return a Bucket
+--   NodeTreeElem
+refresh :: (Serialize i, Eq i) => Node i -> [(Node i, Int)] -> NodeTreeElem i
+refresh node b = Bucket $ case L.find (idMatches (nodeId node) . fst) b of
+                    Just x@(n, _) -> (n, 0) : L.delete x b
                     _         -> b
 
 -- | Insert a node into a NodeTree
@@ -104,7 +144,7 @@ insert tree node = if applyAt tree (nodeId node) needsSplit
     where needsSplit depth valid b =
             let maxDepth = (length . toByteStruct . nodeId $ node) - 1
             in  -- A new node will be inserted
-                node `notElem` b &&
+                node `notElem` map fst b &&
                 -- The bucket is full
                 length b >= 7 &&
                 -- The bucket may be split
@@ -112,9 +152,9 @@ insert tree node = if applyAt tree (nodeId node) needsSplit
 
           doInsert _ _ b
             -- Refresh an already existing node
-            | node `elem` b = refresh node b
+            | node `elem` map fst b = refresh node b
             -- Simply insert the node, if the bucket isn't full
-            | length b < 7 = Bucket $ node:b
+            | length b < 7 = Bucket $ (node, 0):b
             -- Don't insert the node otherwise
             | otherwise = Bucket b
 
@@ -127,12 +167,12 @@ split tree id = modifyAt tree id f
 
           -- Recursivly split the nodes into two buckets
           splitBucket _ []     = ([], [])
-          splitBucket i (n:ns) = let bs = toByteStruct . nodeId $ n
-                                     bit = bs !! i
-                                     (left, right) = splitBucket i ns
-                                 in if bit
-                                    then (left, n:right)
-                                    else (n:left, right)
+          splitBucket i (x@(n, _):ns) = let bs = toByteStruct . nodeId $ n
+                                            bit = bs !! i
+                                            (left, right) = splitBucket i ns
+                                        in if bit
+                                           then (left, x:right)
+                                           else (x:left, right)
 
 -- | Find the k closest Nodes to a given Id
 findClosest :: (Serialize i) => NodeTree i -> i -> Int -> [Node i]
@@ -143,8 +183,8 @@ findClosest (NodeTree idStruct elem) id n =
           --
           -- Take the n closest nodes
           go _ _ (Bucket b) n
-            | length b <= n = b
-            | otherwise = take n . sortByDistanceTo b $ id
+            | length b <= n = map fst b
+            | otherwise = take n . sortByDistanceTo (map fst b) $ id
           -- Take the closest nodes from the left child first, if those aren't
           -- enough, take the rest from the right
           go (i:is) (False:ts) (Split left right) n =
@@ -172,10 +212,10 @@ idMatches id node = id == nodeId node
 toList :: NodeTree i -> [Node i]
 toList (NodeTree _ elems) = go elems
     where go (Split left right) = go left ++ go right
-          go (Bucket b) = b
+          go (Bucket b) = map fst b
 
 -- | Fold over the buckets
 fold :: ([Node i] -> a -> a) -> a -> NodeTree i -> a
 fold f init (NodeTree _ elems) = go init elems
     where go a (Split left right) = let a' = go a left in go a' right
-          go a (Bucket b) = f b a
+          go a (Bucket b) = f (map fst b) a
