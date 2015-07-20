@@ -74,7 +74,7 @@ instance (Arbitrary i) => Arbitrary (Node i) where
 
 -- | This enables me to specifiy a new Arbitrary instance
 newtype NodeBunch i = NB {
-      nodes :: KBucket i
+      nodes :: [Node i]
     } deriving (Show)
 
 -- | Make sure all Ids are unique

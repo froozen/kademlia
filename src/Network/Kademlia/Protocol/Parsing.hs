@@ -115,7 +115,7 @@ parseNode = do
     return $ Node peer id
 
 -- | Parses a trailing k-bucket
-parseKBucket :: (Serialize i) => Parse (KBucket i)
+parseKBucket :: (Serialize i) => Parse [Node i]
 parseKBucket = liftM2 (:) parseNode parseKBucket
                    `catchE` \_ -> return []
 

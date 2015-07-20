@@ -28,9 +28,9 @@ import qualified Data.List as L (find, delete)
 data NodeTree i = NodeTree ByteStruct (NodeTreeElem i)
 
 data NodeTreeElem i = Split (NodeTreeElem i) (NodeTreeElem i)
-                    | Bucket (KBucket i)
+                    | Bucket [Node i]
 
-type NodeTreeFunction i a = Int -> Bool -> KBucket i -> a
+type NodeTreeFunction i a = Int -> Bool -> [Node i] -> a
 
 -- | Modify the position in the tree where the supplied id would be
 modifyAt :: (Serialize i) =>
@@ -87,7 +87,7 @@ delete tree id = modifyAt tree id f
 
 -- | Refresh the node corresponding to a supplied Id by placing it at the first
 --   index of it's KBucket and return a Bucket NodeTreeElem
-refresh :: (Serialize i, Eq i) => Node i -> KBucket i -> NodeTreeElem i
+refresh :: (Serialize i, Eq i) => Node i -> [Node i] -> NodeTreeElem i
 refresh node b = Bucket $ case L.find (idMatches . nodeId $ node) b of
                     Just _ -> node : L.delete node b
                     _         -> b
@@ -135,7 +135,7 @@ split tree id = modifyAt tree id f
                                     else (n:left, right)
 
 -- | Find the k closest Nodes to a given Id
-findClosest :: (Serialize i) => NodeTree i -> i -> Int -> KBucket i
+findClosest :: (Serialize i) => NodeTree i -> i -> Int -> [Node i]
 findClosest (NodeTree idStruct elem) id n =
     let targetStruct = toByteStruct id
     in go idStruct targetStruct elem n
@@ -175,7 +175,7 @@ toList (NodeTree _ elems) = go elems
           go (Bucket b) = b
 
 -- | Fold over the buckets
-fold :: (KBucket i -> a -> a) -> a -> NodeTree i -> a
+fold :: ([Node i] -> a -> a) -> a -> NodeTree i -> a
 fold f init (NodeTree _ elems) = go init elems
     where go a (Split left right) = let a' = go a left in go a' right
           go a (Bucket b) = f b a

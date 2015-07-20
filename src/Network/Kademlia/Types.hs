@@ -10,7 +10,6 @@ module Network.Kademlia.Types
     ( Peer(..)
     , toPeer
     , Node(..)
-    , KBucket
     , sortByDistanceTo
     , Serialize(..)
     , Signal(..)
@@ -39,12 +38,8 @@ data Node i = Node {
     , nodeId :: i
     } deriving (Eq, Ord, Show)
 
--- | Aliases to make the code more readable by using the same names as the
---   papers
-type KBucket i = [Node i]
-
 -- | Sort a bucket by the closeness of its nodes to a give Id
-sortByDistanceTo :: (Serialize i) => KBucket i -> i -> KBucket i
+sortByDistanceTo :: (Serialize i) => [Node i] -> i -> [Node i]
 sortByDistanceTo bucket id = unpack . sort . pack $ bucket
     where pack bk = zip bk $ map f bk
           f = distance id . nodeId
@@ -103,7 +98,7 @@ data Command i a = PING
                  | PONG
                  | STORE        i a
                  | FIND_NODE    i
-                 | RETURN_NODES i (KBucket i)
+                 | RETURN_NODES i [Node i]
                  | FIND_VALUE   i
                  | RETURN_VALUE i a
                    deriving (Eq, Show)
