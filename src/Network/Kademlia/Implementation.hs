@@ -27,9 +27,10 @@ import Data.List (delete, find, (\\))
 import Data.Maybe (isJust, fromJust)
 
 
--- Lookup the value corresponding to a key in the DHT
+-- Lookup the value corresponding to a key in the DHT and return it, together
+-- with the Node that was the first to answer the lookup
 lookup :: (Serialize i, Serialize a, Eq i, Ord i) => KademliaInstance i a -> i
-       -> IO (Maybe a)
+       -> IO (Maybe (a, Node i))
 lookup inst id = runLookup go inst id
     where go = startLookup sendS cancel checkSignal
 
@@ -57,7 +58,7 @@ lookup inst id = runLookup go inst id
                     liftIO . send (handle inst) cachePeer . STORE id $ value
 
                 -- Return the value
-                return . Just $ value
+                return . Just $ (value, origin)
 
           -- When receiving a RETURN_NODES command, throw the nodes into the
           -- lookup loop and continue the lookup

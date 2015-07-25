@@ -79,9 +79,9 @@ Now you're ready to dive in and use the DHT:
 >    let exampleValue = Person 25 "Alan Turing"
 >    K.store secondInstance (KademliaID . C.pack $ "raxqT") exampleValue
 >
->    -- Look up the value
->    result <- K.lookup firstInstance . KademliaID . C.pack $ "raxqT"
->    print result
+>    -- Look up the value and it's source
+>    (value, source) <- K.lookup firstInstance . KademliaID . C.pack $ "raxqT"
+>    print value
 >
 >    -- Close the instances
 >    K.close firstInstance
@@ -111,6 +111,8 @@ module Network.Kademlia
     , I.store
     , Network.Kademlia.joinNetwork
     , Serialize(..)
+    , Node(..)
+    , Peer(..)
     ) where
 
 import Network.Kademlia.Networking

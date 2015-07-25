@@ -60,5 +60,5 @@ storeAndLookupCheck ids keys = monadicIO $ do
           tryLookup inst (key, val) = do
             result <- K.lookup inst key
             case result of
-                Just v -> return $ v == val
+                Just (v, _) -> return $ v == val
                 _ -> return False
