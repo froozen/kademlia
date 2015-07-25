@@ -74,6 +74,8 @@ treeChecks = testGroup "Network.Kademlia.Tree" [
 instanceChecks = testGroup "Network.Kademlia.Instance" [
       QC.testProperty "Storing and Retrieving values works"
          storeAndFindValueCheck
+    , QC.testProperty "Peers are put into the tree on first encounter"
+         trackingKnownPeersCheck
     ]
 
 replyQueueChecks = testGroup "Network.Kademlia.ReplyQueue" [

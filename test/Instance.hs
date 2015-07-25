@@ -19,6 +19,7 @@ import Network.Kademlia.ReplyQueue
 import qualified Data.ByteString.Char8 as C
 import Control.Concurrent.Chan
 import Control.Monad (liftM2)
+import Data.Maybe (isJust)
 
 import TestTypes
 
@@ -86,5 +87,29 @@ storeAndFindValueCheck key value = monadicIO $ do
 
     monitor . counterexample $ "Commands inequal: " ++ show cmd ++ " /= " ++ show (command sig)
     assert $ cmd == command sig
+
+    return ()
+
+-- | Assert that a peer is put into the NodeTree on first encounter
+trackingKnownPeersCheck :: Property
+trackingKnownPeersCheck = monadicIO $ do
+    let (_, pB) = peers
+    (idA, idB) <- ids
+
+    rq <- run emptyReplyQueue :: PropertyM IO (ReplyQueue IdType String)
+
+    khA <- run $ openOn "1122" idA rq
+    kiB <- run $ create 1123 idB :: PropertyM IO (KademliaInstance IdType String)
+
+    run $ startRecvProcess khA
+
+    run . send khA pB $ PING
+    run . readChan . timeoutChan $ rq
+
+    run $ closeK khA
+    run $ close kiB
+
+    node <- run $ lookupNode kiB idA
+    assert . isJust $ node
 
     return ()
