@@ -78,7 +78,14 @@ storeAndFindValueCheck key value = monadicIO $ do
     run $ send khA pB $ STORE key value
     run $ send khA pB $ FIND_VALUE key
 
+    -- There is a race condition, so the instance will sometimes try to store
+    -- the value in the handle, before replying with a RETURN_VALUE
     (Answer sig) <- run (readChan . timeoutChan $ rq :: IO (Reply IdType String))
+    sig <- case command sig of
+            STORE _ _ -> do
+                (Answer sig) <- run (readChan . timeoutChan $ rq :: IO (Reply IdType String))
+                return sig
+            _ -> return sig
 
     run $ closeK khA
     run $ close kiB
