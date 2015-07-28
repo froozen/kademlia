@@ -135,7 +135,7 @@ receivingProcess inst rq replyChan registerChan = forever $ do
                         expect h newRegistration registerChan
 
         -- Store values in newly encountered nodes that you are the closest to
-        Answer (Signal node _) -> do
+        Answer (Signal node cmd) -> do
             let originId = nodeId node
             tree <- retrieve sTree
 
@@ -155,6 +155,17 @@ receivingProcess inst rq replyChan registerChan = forever $ do
                         p = peer node
                     -- Store all stored values in the new node
                     forM_ storedValues (send h p . uncurry STORE)
+
+            case cmd of
+                -- Ping unknown Nodes that were returned by RETURN_NODES.
+                -- Pinging them first is neccessary to prevent disconnected
+                -- nodes from spreading through the networks NodeTrees.
+                (RETURN_NODES _ nodes) -> forM_ nodes $ \node -> do
+                    result <- lookupNode inst . nodeId $ node
+                    case result of
+                        Nothing -> send (handle inst) (peer node) PING
+                        _ -> return ()
+                _ -> return ()
 
         _ -> return ()
 
