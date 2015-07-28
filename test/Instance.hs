@@ -19,7 +19,7 @@ import Network.Kademlia.ReplyQueue
 import qualified Data.ByteString.Char8 as C
 import Control.Concurrent.Chan
 import Control.Monad (liftM2)
-import Data.Maybe (isJust)
+import Data.Maybe (isJust, fromJust)
 
 import TestTypes
 
@@ -118,5 +118,8 @@ trackingKnownPeersCheck = monadicIO $ do
 
     node <- run $ I.lookupNode kiB idA
     assert . isJust $ node
+
+    nodes <- run . dumpPeers $ kiB
+    assert $ nodes == [fromJust node]
 
     return ()

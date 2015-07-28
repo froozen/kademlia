@@ -14,6 +14,7 @@ module Network.Kademlia.Instance
     , newInstance
     , insertNode
     , lookupNode
+    , dumpPeers
     ) where
 
 import Control.Concurrent
@@ -77,6 +78,12 @@ lookupNode :: (Serialize i, Ord i) => KademliaInstance i a -> i -> IO (Maybe (No
 lookupNode (KI _ (KS sTree _) _) id = atomically $ do
     tree <- readTVar sTree
     return . T.lookup tree $ id
+
+-- | Return all the Nodes an Instance has encountered so far
+dumpPeers :: KademliaInstance i a -> IO [Node i]
+dumpPeers (KI _ (KS sTree _) _) = atomically $ do
+    tree <- readTVar sTree
+    return . T.toList $ tree
 
 -- | Insert a value into the store
 insertValue :: (Ord i) => i -> a -> KademliaInstance i a -> IO ()

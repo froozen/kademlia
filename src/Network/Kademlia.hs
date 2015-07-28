@@ -110,6 +110,7 @@ module Network.Kademlia
     , I.lookup
     , I.store
     , I.lookupNode
+    , dumpPeers
     , Network.Kademlia.joinNetwork
     , Serialize(..)
     , Node(..)
