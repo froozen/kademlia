@@ -10,6 +10,7 @@ module Network.Kademlia.Implementation
     ( lookup
     , store
     , joinNetwork
+    , Network.Kademlia.Implementation.lookupNode
     ) where
 
 import Network.Kademlia.Networking
@@ -143,6 +144,29 @@ joinNetwork inst node = ownId >>= runLookup go inst
 
           -- Send a FIND_NODE command, looking up your own id
           sendS node = liftIO ownId >>= flip sendSignal node . FIND_NODE
+
+-- | Lookup the Node corresponding to the supplied ID
+lookupNode :: (Serialize i, Serialize a, Eq i, Ord i) => KademliaInstance i a -> i
+           -> IO (Maybe (Node i))
+lookupNode inst id = runLookup go inst id
+    where go = startLookup sendS end checkSignal
+
+          -- Return Nothing on lookup failure
+          end = return Nothing
+
+          -- Check wether the Node we are looking for was found. If so, return
+          -- it, otherwise continue the lookup.
+          checkSignal (Signal _ (RETURN_NODES _ nodes)) =
+                case find (\(Node _ nId) -> nId == id) nodes of
+                    Just node -> return . Just $ node
+                    _ -> continueLookup nodes sendS continue end
+
+          -- Continuing always means waiting for the next signal
+          continue = waitForReply end checkSignal
+
+          -- Send a FIND_NODE command looking for the Node corresponding to the
+          -- id
+          sendS = sendSignal (FIND_NODE id)
 
 -- | The state of a lookup
 data LookupState i a = LookupState {

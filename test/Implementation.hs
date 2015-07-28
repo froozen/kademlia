@@ -19,7 +19,7 @@ import Network.Kademlia.Instance
 import Control.Monad
 import Control.Applicative
 import Control.Concurrent.STM
-import Data.Maybe (isJust, fromMaybe)
+import Data.Maybe (isJust, fromJust)
 
 constructNetwork :: IdBunch IdType -> PropertyM IO [KademliaInstance IdType String]
 constructNetwork idBunch = do
@@ -62,3 +62,17 @@ storeAndLookupCheck ids keys = monadicIO $ do
             case result of
                 Just (v, _) -> return $ v == val
                 _ -> return False
+
+lookupNodesCheck :: IdBunch IdType -> Property
+lookupNodesCheck ids = monadicIO $ do
+    instances <- constructNetwork ids
+
+    success <- run $ forM instances $ \inst ->
+        and <$> (mapM (tryLookup inst) . getIds $ ids)
+
+    run $ mapM_ K.close instances
+
+    assert . and $ success
+
+    where tryLookup inst id = check id <$> K.lookupNode inst id
+          check id result = isJust result && id == (nodeId . fromJust $ result)

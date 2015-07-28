@@ -90,6 +90,8 @@ implementationChecks = testGroup "Network.Kademlia.Implementation" [
          joinCheck
     , QC.testProperty "Storing and looking up values works"
         storeAndLookupCheck
+    , QC.testProperty "Looking up Nodes works"
+        lookupNodesCheck
     ]
 
 hUnitTests = testGroup "HUnit" [

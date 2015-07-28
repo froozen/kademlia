@@ -11,7 +11,7 @@ import Test.HUnit hiding (assert)
 import Test.QuickCheck
 import Test.QuickCheck.Monadic
 
-import Network.Kademlia.Instance
+import Network.Kademlia.Instance as I
 import Network.Kademlia
 import Network.Kademlia.Networking
 import Network.Kademlia.Types
@@ -116,7 +116,7 @@ trackingKnownPeersCheck = monadicIO $ do
     run $ closeK khA
     run $ close kiB
 
-    node <- run $ lookupNode kiB idA
+    node <- run $ I.lookupNode kiB idA
     assert . isJust $ node
 
     return ()
