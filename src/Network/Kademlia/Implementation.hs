@@ -27,8 +27,8 @@ import Data.List (delete, find, (\\))
 import Data.Maybe (isJust, fromJust)
 
 
--- Lookup the value corresponding to a key in the DHT and return it, together
--- with the Node that was the first to answer the lookup
+-- | Lookup the value corresponding to a key in the DHT and return it, together
+--   with the Node that was the first to answer the lookup
 lookup :: (Serialize i, Serialize a, Eq i, Ord i) => KademliaInstance i a -> i
        -> IO (Maybe (a, Node i))
 lookup inst id = runLookup go inst id
@@ -83,7 +83,7 @@ lookup inst id = runLookup go inst id
                 finish
           finishCheck _ = finish
 
--- Store assign a value to a key and store it in the DHT
+-- | Store assign a value to a key and store it in the DHT
 store :: (Serialize i, Serialize a, Eq i, Ord i) =>
          KademliaInstance i a -> i -> a -> IO ()
 store inst key val = runLookup go inst key
