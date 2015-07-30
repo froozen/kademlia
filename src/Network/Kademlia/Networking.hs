@@ -121,13 +121,13 @@ expect kh reg = register reg . replyQueue $ kh
 -- | Close the connection corresponding to a KademliaHandle
 closeK :: KademliaHandle i a -> IO ()
 closeK kh = do
-    -- Kill sendThread
-    killThread . sendThread $ kh
-
     -- Kill recvThread
     empty <- isEmptyMVar . recvThread $ kh
     unless empty $ do
         tId <- takeMVar . recvThread $ kh
         killThread tId
+
+    -- Kill sendThread
+    killThread . sendThread $ kh
 
     yield
