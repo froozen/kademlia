@@ -10,6 +10,7 @@ module Network.Kademlia.Implementation
     ( lookup
     , store
     , joinNetwork
+    , JoinResult(..)
     , Network.Kademlia.Implementation.lookupNode
     ) where
 
@@ -118,32 +119,42 @@ store inst key val = runLookup go inst key
                 forM_ storePeers $
                     \storePeer -> liftIO . send h storePeer . STORE key $ val
 
+-- | The different possibel results of joinNetwork
+data JoinResult = JoinSucces | NodeDown | IDClash deriving (Eq, Ord, Show)
+
 -- | Make a KademliaInstance join the network a supplied Node is in
 joinNetwork :: (Serialize i, Serialize a, Eq i, Ord i) => KademliaInstance i a
-            -> Node i -> IO ()
+            -> Node i -> IO JoinResult
 joinNetwork inst node = ownId >>= runLookup go inst
     where go = do
             -- Poll the supplied node
             sendS node
             -- Run a normal lookup from thereon out
-            waitForReply cancel checkSignal
+            waitForReply nodeDown checkSignal
 
-          -- Do nothing upon failure or when the join operation has terminated
-          cancel = return ()
+          -- No answer to the first signal means, that that Node is down
+          nodeDown = return NodeDown
 
           -- Retrieve your own id
           ownId =
             fmap T.extractId . atomically . readTVar .  sTree . state $ inst
 
-          -- Always add the nodes into the loop and continue the lookup
-          checkSignal (Signal _ (RETURN_NODES _ nodes)) =
-            continueLookup nodes sendS continue cancel
+          -- Check wether the own id was encountered. If so, return a IDClash
+          -- error, otherwise, continue the lookup.
+          checkSignal (Signal _ (RETURN_NODES _ nodes)) = do
+                tId <- gets targetId
+                case find (\node -> nodeId node == tId) nodes of
+                    Just _ -> return IDClash
+                    _ -> continueLookup nodes sendS continue finish
 
           -- Continuing always means waiting for the next signal
-          continue = waitForReply cancel checkSignal
+          continue = waitForReply finish checkSignal
 
           -- Send a FIND_NODE command, looking up your own id
           sendS node = liftIO ownId >>= flip sendSignal node . FIND_NODE
+
+          -- Return a success, when the operation finished cleanly
+          finish = return JoinSucces
 
 -- | Lookup the Node corresponding to the supplied ID
 lookupNode :: (Serialize i, Serialize a, Eq i, Ord i) => KademliaInstance i a -> i

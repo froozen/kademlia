@@ -112,6 +112,7 @@ module Network.Kademlia
     , I.lookupNode
     , dumpPeers
     , Network.Kademlia.joinNetwork
+    , JoinResult(..)
     , Serialize(..)
     , Node(..)
     , Peer(..)
@@ -140,7 +141,7 @@ create port id = do
 
 -- | Make a KademliaInstance join the network the supplied Node is a part of
 joinNetwork :: (Serialize i, Ord i, Eq i, Serialize a) => KademliaInstance i a
-     -> (String, Int, i) -> IO ()
+     -> (String, Int, i) -> IO JoinResult
 joinNetwork inst (host, port, i) = let peer = Peer host . fromIntegral $ port
                                        node = Node peer i
                                    in  I.joinNetwork inst node

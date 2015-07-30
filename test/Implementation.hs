@@ -7,6 +7,7 @@ Tests specific to Network.Kademlia.Implementation.
 
 module Implementation where
 
+import Test.HUnit hiding (assert)
 import Test.QuickCheck
 import Test.QuickCheck.Monadic
 import TestTypes
@@ -19,7 +20,9 @@ import Network.Kademlia.Instance
 import Control.Monad
 import Control.Applicative
 import Control.Concurrent.STM
+
 import Data.Maybe (isJust, fromJust)
+import qualified Data.ByteString.Char8 as C
 
 constructNetwork :: IdBunch IdType -> PropertyM IO [KademliaInstance IdType String]
 constructNetwork idBunch = do
@@ -41,6 +44,35 @@ joinCheck idBunch = monadicIO $ do
     where filled inst = do
             tree <- atomically . readTVar . sTree . state $ inst
             return $ (length . T.toList $ tree) >= 7
+
+-- | Make sure ID clashes are detected properly
+idClashCheck :: IdType -> IdType -> Property
+idClashCheck idA idB = monadicIO $ do
+    let peers = map (Peer "127.0.0.1") [1123..]
+        ids = [idA, idB, idA]
+
+    insts@[kiA, _, kiB] <- run (zipWithM K.create [1123..] ids
+                        :: IO [KademliaInstance IdType String])
+
+    run . K.joinNetwork kiA $ ("127.0.0.1", 1124, idB)
+    joinResult <- run . K.joinNetwork kiB $ ("127.0.0.1", 1124, idB)
+
+    run $ mapM_ K.close insts
+
+    assert $ joinResult == K.IDClash
+
+
+-- | Make sure an offline peer is detected
+nodeDownCheck :: Assertion
+nodeDownCheck = do
+    inst <- K.create 1123 idA :: IO (KademliaInstance IdType String)
+    joinResult <- K.joinNetwork inst ("127.0.0.1", 1124, idB)
+    K.close inst
+
+    assertEqual "" joinResult K.NodeDown
+
+    where idA = IT . C.pack $ "hello"
+          idB = IT . C.pack $ "herro"
 
 storeAndLookupCheck :: IdBunch IdType -> IdBunch IdType -> Property
 storeAndLookupCheck ids keys = monadicIO $ do

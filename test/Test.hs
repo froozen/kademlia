@@ -88,6 +88,8 @@ replyQueueChecks = testGroup "Network.Kademlia.ReplyQueue" [
 implementationChecks = testGroup "Network.Kademlia.Implementation" [
       QC.testProperty "Joining the Network works"
          joinCheck
+    , QC.testProperty "ID clashes are detected"
+         idClashCheck
     , QC.testProperty "Storing and looking up values works"
         storeAndLookupCheck
     , QC.testProperty "Looking up Nodes works"
@@ -96,9 +98,15 @@ implementationChecks = testGroup "Network.Kademlia.Implementation" [
 
 hUnitTests = testGroup "HUnit" [
       instanceCases
+    , implementationCases
     ]
 
 instanceCases = testGroup "Network.Kademlia.Instance" [
       HU.testCase "PINGs are automaticly handled"
          handlesPingCheck
+    ]
+
+implementationCases = testGroup "Network.Kademlia.Implementation" [
+      HU.testCase "Trying to join over an offline Node is detected"
+         nodeDownCheck
     ]
