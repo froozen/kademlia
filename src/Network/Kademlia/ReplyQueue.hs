@@ -97,11 +97,6 @@ timeoutThread reg rq = forkIO $ do
 
     -- Remove the ReplyRegistration from the ReplyQueue
     myTId <- myThreadId
-    atomically $ do
-        rQueue <- readTVar . queue $ rq
-        case find (\(_, _, tId) -> tId == myTId) rQueue of
-            Just rqElem -> writeTVar (queue rq) $ delete rqElem rQueue
-            _ -> return ()
 
     -- Send Timeout signal
     writeChan (timeoutChan rq) . Timeout $ reg
