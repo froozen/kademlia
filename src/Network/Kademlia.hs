@@ -71,17 +71,25 @@ Now you're ready to dive in and use the DHT:
 >    -- network
 >    firstInstance <- K.create 12345 . KademliaID . C.pack $ "hello"
 >
+>    -- Create a Node representing the first instance
+>    let firstNode = Node (Peer "localhost" 12345) . KademliaID . C.pack $ "hello"
+>
 >    -- Create the second instance and make it join the network
 >    secondInstance <- K.create 12346 . KademliaID . C.pack $ "uAleu"
->    K.joinNetwork secondInstance ("localhost", 12345, "hello")
+>    joinResult <- K.joinNetwork secondInstance firstNode
 >
->    -- Store an example value in the network
->    let exampleValue = Person 25 "Alan Turing"
->    K.store secondInstance (KademliaID . C.pack $ "raxqT") exampleValue
+>    -- Make sure the joining was successful
+>    case joinResult of
+>         JoinSuccess -> do
+>             -- Store an example value in the network
+>             let exampleValue = Person 25 "Alan Turing"
+>             K.store secondInstance (KademliaID . C.pack $ "raxqT") exampleValue
 >
->    -- Look up the value and it's source
->    (value, source) <- K.lookup firstInstance . KademliaID . C.pack $ "raxqT"
->    print value
+>             -- Look up the value and it's source
+>             (value, source) <- K.lookup firstInstance . KademliaID . C.pack $ "raxqT"
+>             print value
+>
+>         _ -> return ()
 >
 >    -- Close the instances
 >    K.close firstInstance
