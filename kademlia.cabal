@@ -1,5 +1,5 @@
 name:                kademlia
-version:             1.0.0.0
+version:             1.1.0.0
 homepage:            https://github.com/froozen/kademlia
 bug-reports:         https://github.com/froozen/kademlia/issues
 synopsis:            An implementation of the Kademlia DHT Protocol
