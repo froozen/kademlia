@@ -68,32 +68,35 @@ storeAndFindValueCheck key value = monadicIO $ do
     let (pA, pB) = peers
     (idA, idB) <- ids
 
-    rq <- run emptyReplyQueue
+    receivedCmd <- run $ do
+        rq <- emptyReplyQueue
 
-    khA <- run $ openOn "1122" idA rq
-    kiB <- run $ create 1123 idB :: PropertyM IO (KademliaInstance IdType String)
+        khA <- openOn "1122" idA rq
+        kiB <- create 1123 idB :: IO (KademliaInstance IdType String)
 
-    run $ startRecvProcess khA
+        startRecvProcess khA
 
-    run $ send khA pB $ STORE key value
-    run $ send khA pB $ FIND_VALUE key
+        send khA pB $ STORE key value
+        send khA pB $ FIND_VALUE key
 
-    -- There is a race condition, so the instance will sometimes try to store
-    -- the value in the handle, before replying with a RETURN_VALUE
-    (Answer sig) <- run (readChan . timeoutChan $ rq :: IO (Reply IdType String))
-    sig <- case command sig of
-            STORE _ _ -> do
-                (Answer sig) <- run (readChan . timeoutChan $ rq :: IO (Reply IdType String))
-                return sig
-            _ -> return sig
+        -- There is a race condition, so the instance will sometimes try to store
+        -- the value in the handle, before replying with a RETURN_VALUE
+        (Answer sig) <- readChan . timeoutChan $ rq :: IO (Reply IdType String)
+        sig <- case command sig of
+                STORE _ _ -> do
+                    (Answer sig) <- readChan . timeoutChan $ rq :: IO (Reply IdType String)
+                    return sig
+                _ -> return sig
 
-    run $ closeK khA
-    run $ close kiB
+        closeK khA
+        close kiB
+
+        return . command $ sig
 
     let cmd = RETURN_VALUE key value :: Command IdType String
 
-    monitor . counterexample $ "Commands inequal: " ++ show cmd ++ " /= " ++ show (command sig)
-    assert $ cmd == command sig
+    monitor . counterexample $ "Commands inequal: " ++ show cmd ++ " /= " ++ show receivedCmd
+    assert $ cmd == receivedCmd
 
     return ()
 
@@ -103,20 +106,24 @@ trackingKnownPeersCheck = monadicIO $ do
     let (_, pB) = peers
     (idA, idB) <- ids
 
-    rq <- run emptyReplyQueue :: PropertyM IO (ReplyQueue IdType String)
+    (node, kiB) <- run $ do
+        rq <- emptyReplyQueue :: IO (ReplyQueue IdType String)
 
-    khA <- run $ openOn "1122" idA rq
-    kiB <- run $ create 1123 idB :: PropertyM IO (KademliaInstance IdType String)
+        khA <- openOn "1122" idA rq
+        kiB <- create 1123 idB :: IO (KademliaInstance IdType String)
 
-    run $ startRecvProcess khA
+        startRecvProcess khA
 
-    run . send khA pB $ PING
-    run . readChan . timeoutChan $ rq
+        send khA pB $ PING
+        readChan . timeoutChan $ rq
 
-    run $ closeK khA
-    run $ close kiB
+        node <- I.lookupNode kiB idA
 
-    node <- run $ I.lookupNode kiB idA
+        closeK khA
+        close kiB
+
+        return (node, kiB)
+
     assert . isJust $ node
 
     nodes <- run . dumpPeers $ kiB

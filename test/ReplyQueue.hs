@@ -30,16 +30,20 @@ repliesCheck sig1 sig2 = monadicIO $ do
     let (Just replyReg1) = reg1
     let (Just replyReg2) = reg2
 
-    rq <- run emptyReplyQueue
-    chan <- run (newChan :: IO (Chan (Reply IdType String)))
+    contents <- run $ do
+        rq <- emptyReplyQueue
+        chan <- newChan :: IO (Chan (Reply IdType String))
 
-    run $ register replyReg1 rq chan
-    run $ register replyReg2 rq chan
+        register replyReg1 rq chan
+        register replyReg2 rq chan
 
-    run $ dispatch (Answer sig1) rq
-    run $ dispatch (Answer sig2) rq
+        dispatch (Answer sig1) rq
+        dispatch (Answer sig2) rq
 
-    contents <- run $ getChanContents chan
+        contents <- getChanContents chan
+
+        return contents
+
     assert . not . null $ contents
 
     let [reply1, reply2] = take 2 contents
@@ -56,19 +60,17 @@ repliesCheck sig1 sig2 = monadicIO $ do
 -- | Check wether registered reply handlers are removed after usage
 removedCheck :: Signal IdType String -> Property
 removedCheck sig = monadicIO $ do
-    rq <- run emptyReplyQueue
-    chan <- run (newChan :: IO (Chan (Reply IdType String)))
-
     let reg = toRegistration sig
     case reg of
         -- Discard the test case
         Nothing -> pre False
         Just reg -> do
-            run $ register reg rq chan
-
-            run $ dispatch (Answer sig) rq
-
-            removed <- run $ fmap null (atomically . readTVar . queue $ rq)
+            removed <- run $ do
+                rq <- emptyReplyQueue
+                chan <- newChan :: IO (Chan (Reply IdType String))
+                register reg rq chan
+                dispatch (Answer sig) rq
+                fmap null (atomically . readTVar . queue $ rq)
             assert removed
 
 -- | Convert a Signal into its ReplyRegistration representation

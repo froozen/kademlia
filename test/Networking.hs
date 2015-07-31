@@ -32,24 +32,26 @@ valueSet = do
     return (pA, pB, idA, idB)
 
 -- | Make sure sending and receiving works
-sendCheck = monadicIO $ do
+sendCheck :: Command IdType String -> Property
+sendCheck cmd = monadicIO $ do
     (pA, pB, idA, idB) <- valueSet
 
-    rqA <- run emptyReplyQueue
-    rqB <- run emptyReplyQueue
+    sig <- run $ do
+        rqA <- emptyReplyQueue
+        rqB <- emptyReplyQueue
 
-    khA <- run $ openOn "1122" idA rqA
-    khB <- run $ (openOn "1123" idB rqB :: IO (KademliaHandle IdType String))
+        khA <- openOn "1122" idA rqA
+        khB <- (openOn "1123" idB rqB :: IO (KademliaHandle IdType String))
 
-    run $ startRecvProcess khB
+        startRecvProcess khB
 
-    cmd <- pick (arbitrary :: Gen (Command IdType String))
+        send khA pB cmd
+        (Answer sig) <- readChan . timeoutChan $ rqB :: IO (Reply IdType String)
 
-    run $ send khA pB cmd
-    (Answer sig) <- run (readChan . timeoutChan $ rqB :: IO (Reply IdType String))
+        closeK khA
+        closeK khB
 
-    run $ closeK khA
-    run $ closeK khB
+        return sig
 
     assert $ command sig == cmd
     assert $ (peer . source $ sig) == pA
@@ -58,29 +60,29 @@ sendCheck = monadicIO $ do
     return ()
 
 -- | Make sure expect works the way it's supposed to
-expectCheck = monadicIO $ do
-    (pA, pB, idA, idB) <- valueSet
-
-    sig <- pick (arbitrary :: Gen (Signal IdType String))
-
+expectCheck :: Signal IdType String -> IdType -> Property
+expectCheck sig idA = monadicIO $ do
     let rtM = rType . command $ sig
     pre . isJust $ rtM
     let (Just rt) = rtM
         rr = RR [rt] . nodeId . source $ sig
 
-    rqA <- run emptyReplyQueue
+    replySig <- run $ do
+        rqA <- emptyReplyQueue
 
-    khA <- run $ openOn "1122" idA rqA
+        khA <- openOn "1122" idA rqA
 
-    run $ startRecvProcess khA
+        startRecvProcess khA
 
-    testChan <- run (newChan :: IO (Chan (Reply IdType String)))
-    run $ expect khA rr testChan
-    run $ dispatch (Answer sig) rqA
+        testChan <- newChan :: IO (Chan (Reply IdType String))
+        expect khA rr testChan
+        dispatch (Answer sig) rqA
 
-    (Answer replySig) <- run (readChan testChan :: IO (Reply IdType String))
+        (Answer replySig) <- readChan testChan :: IO (Reply IdType String)
 
-    run $ closeK khA
+        closeK khA
+
+        return replySig
 
     assert $ replySig == sig
 

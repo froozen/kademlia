@@ -25,20 +25,20 @@ import Data.Maybe (isJust, fromJust)
 import qualified Data.ByteString.Char8 as C
 
 constructNetwork :: IdBunch IdType -> PropertyM IO [KademliaInstance IdType String]
-constructNetwork idBunch = do
+constructNetwork idBunch = run $ do
     let entryNode = Node (Peer "127.0.0.1" 1123) (head . getIds $ idBunch)
-    instances <- run (zipWithM K.create [1123..] (getIds idBunch)
-                        :: IO [KademliaInstance IdType String])
+    instances <- zipWithM K.create [1123..] (getIds idBunch)
+                        :: IO [KademliaInstance IdType String]
 
-    run $ forM_ (tail instances) (`K.joinNetwork` ("127.0.0.1", 1123, nodeId entryNode))
+    forM_ (tail instances) (`K.joinNetwork` ("127.0.0.1", 1123, nodeId entryNode))
     return instances
 
 joinCheck :: IdBunch IdType -> Property
 joinCheck idBunch = monadicIO $ do
     instances <- constructNetwork idBunch
-    run $ mapM_ K.close instances
-
-    present <- run $ mapM filled instances
+    present <- run $ do
+        mapM_ K.close instances
+        mapM filled instances
     assert . and $ present
 
     where filled inst = do
@@ -51,13 +51,16 @@ idClashCheck idA idB = monadicIO $ do
     let peers = map (Peer "127.0.0.1") [1123..]
         ids = [idA, idB, idA]
 
-    insts@[kiA, _, kiB] <- run (zipWithM K.create [1123..] ids
-                        :: IO [KademliaInstance IdType String])
+    joinResult <- run $ do
+        insts@[kiA, _, kiB] <- zipWithM K.create [1123..] ids
+                            :: IO [KademliaInstance IdType String]
 
-    run . K.joinNetwork kiA $ ("127.0.0.1", 1124, idB)
-    joinResult <- run . K.joinNetwork kiB $ ("127.0.0.1", 1124, idB)
+        K.joinNetwork kiA $ ("127.0.0.1", 1124, idB)
+        joinResult <- K.joinNetwork kiB $ ("127.0.0.1", 1124, idB)
 
-    run $ mapM_ K.close insts
+        mapM_ K.close insts
+
+        return joinResult
 
     assert $ joinResult == K.IDClash
 
@@ -78,12 +81,16 @@ storeAndLookupCheck :: IdBunch IdType -> IdBunch IdType -> Property
 storeAndLookupCheck ids keys = monadicIO $ do
     let keyVal = zip (getIds keys) vals
     instances <- constructNetwork ids
-    run $ mapM_ (doStore instances) keyVal
 
-    success <- run $ forM instances $ \inst ->
-        and <$> mapM (tryLookup inst) keyVal
+    success <- run $ do
+        mapM_ (doStore instances) keyVal
 
-    run $ mapM_ K.close instances
+        success <- forM instances $ \inst ->
+            and <$> mapM (tryLookup inst) keyVal
+
+        mapM_ K.close instances
+
+        return success
 
     assert . and $ success
 
@@ -99,10 +106,13 @@ lookupNodesCheck :: IdBunch IdType -> Property
 lookupNodesCheck ids = monadicIO $ do
     instances <- constructNetwork ids
 
-    success <- run $ forM instances $ \inst ->
-        and <$> (mapM (tryLookup inst) . getIds $ ids)
+    success <- run $ do
+        success <- forM instances $ \inst ->
+            and <$> (mapM (tryLookup inst) . getIds $ ids)
 
-    run $ mapM_ K.close instances
+        mapM_ K.close instances
+
+        return success
 
     assert . and $ success
 
