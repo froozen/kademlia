@@ -30,7 +30,7 @@ constructNetwork idBunch = run $ do
     instances <- zipWithM K.create [1123..] (getIds idBunch)
                         :: IO [KademliaInstance IdType String]
 
-    forM_ (tail instances) (`K.joinNetwork` ("127.0.0.1", 1123, nodeId entryNode))
+    forM_ (tail instances) (`K.joinNetwork` entryNode)
     return instances
 
 joinCheck :: IdBunch IdType -> Property
@@ -50,13 +50,14 @@ idClashCheck :: IdType -> IdType -> Property
 idClashCheck idA idB = monadicIO $ do
     let peers = map (Peer "127.0.0.1") [1123..]
         ids = [idA, idB, idA]
+        entryNode = Node (Peer "127.0.0.1" 1124) idB
 
     joinResult <- run $ do
         insts@[kiA, _, kiB] <- zipWithM K.create [1123..] ids
                             :: IO [KademliaInstance IdType String]
 
-        K.joinNetwork kiA $ ("127.0.0.1", 1124, idB)
-        joinResult <- K.joinNetwork kiB $ ("127.0.0.1", 1124, idB)
+        K.joinNetwork kiA $ entryNode
+        joinResult <- K.joinNetwork kiB $ entryNode
 
         mapM_ K.close insts
 
@@ -68,8 +69,9 @@ idClashCheck idA idB = monadicIO $ do
 -- | Make sure an offline peer is detected
 nodeDownCheck :: Assertion
 nodeDownCheck = do
+    let entryNode = Node (Peer "127.0.0.1" 1124) idB
     inst <- K.create 1123 idA :: IO (KademliaInstance IdType String)
-    joinResult <- K.joinNetwork inst ("127.0.0.1", 1124, idB)
+    joinResult <- K.joinNetwork inst entryNode
     K.close inst
 
     assertEqual "" joinResult K.NodeDown
