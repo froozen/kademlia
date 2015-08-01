@@ -14,4 +14,4 @@ For more information, take a look at the libraries [hackage page][hackage].
 [wiki_kademlia]: https://en.wikipedia.org/wiki/Kademlia
 [wiki_dht]: https://en.wikipedia.org/wiki/Distributed_hash_table
 [paper_kademlia]: http://pdos.csail.mit.edu/~petar/papers/maymounkov-kademlia-lncs.pdf
-[hackage]: https://hackage.haskell.org/package/kademlia-1.0.0.0
+[hackage]: https://hackage.haskell.org/package/kademlia-1.1.0.0
