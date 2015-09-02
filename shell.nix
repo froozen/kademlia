@@ -1,23 +1,34 @@
-with (import <nixpkgs> {}).pkgs;
-let
-    ghc = haskellPackages.ghcWithPackages (pkgs:
-        with pkgs; [
-            network
-            mtl
-            transformers
-            stm
+{ nixpkgs ? import <nixpkgs> {}, compiler ? "ghc7101" }:
 
-            # Tests
-            tasty
-            QuickCheck
-            tastyQuickcheck
-            HUnit
-            tastyHunit
-        ]
-    );
+let
+
+  inherit (nixpkgs) pkgs;
+
+  f = { mkDerivation, base, bytestring, containers, HUnit, mtl
+      , network, QuickCheck, stdenv, stm, tasty, tasty-hunit
+      , tasty-quickcheck, transformers, transformers-compat
+      , cabal-install
+      }:
+      mkDerivation {
+        pname = "kademlia";
+        version = "1.1.0.0";
+        src = ./.;
+        buildDepends = [
+          base bytestring containers mtl network stm transformers
+          transformers-compat
+          cabal-install
+        ];
+        testDepends = [
+          base bytestring containers HUnit mtl network QuickCheck stm tasty
+          tasty-hunit tasty-quickcheck transformers transformers-compat
+        ];
+        homepage = "https://github.com/froozen/kademlia";
+        description = "An implementation of the Kademlia DHT Protocol";
+        license = stdenv.lib.licenses.bsd3;
+      };
+
+  drv = pkgs.haskell.packages.${compiler}.callPackage f {};
+
 in
-    stdenv.mkDerivation {
-        name = "kademlia-env";
-        buildInputs = [ ghc haskellPackages.cabalInstall ];
-        shellHook = "eval $(grep export ${ghc}/bin/ghc)";
-    }
+
+  if pkgs.lib.inNixShell then drv.env else drv
