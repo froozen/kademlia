@@ -10,7 +10,7 @@ description:
     .
     The implementation is based on the paper
     /Kademlia: A Peer-to-peer Information System Based on the XOR Metric/:
-    <http://pdos.csail.mit.edu/~petar/papers/maymounkov-kademlia-lncs.pdf>)
+    <http://pdos.csail.mit.edu/~petar/papers/maymounkov-kademlia-lncs.pdf>
     by Petar Maymounkov and David Mazières.
     .
     This library aims to be very simple and pleasant to use, with the downside of

@@ -9,9 +9,9 @@ Portability:  GHC
 A haskell implementation of the Kademlia distributed hashtable, an efficient
 way to store and lookup values distributed over a P2P network.
 
-The implementation is based on the paper by Petar Maymounkov and David Mazières:<br>
+The implementation is based on the paper by Petar Maymounkov and David Mazières:
 /Kademlia: A Peer-to-peer Information System Based on the XOR Metric/:
-(<http://pdos.csail.mit.edu/~petar/papers/maymounkov-kademlia-lncs.pdf>)
+<http://pdos.csail.mit.edu/~petar/papers/maymounkov-kademlia-lncs.pdf>
 
 This library aims to be very simple and pleasant to use, with the downside of
 deciding some of the implementation details, like timeout intervals and

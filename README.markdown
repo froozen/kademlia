@@ -7,7 +7,7 @@ kademlia is a haskell libraray implementing the [Kademlia][wiki_kademlia]
 It aims to be flexible and handle all the low-level work, in order to allow
 for easy integration of the DHT-technology into applications.
 
-The library is build after the original [Kademlia Paper][paper_kademlia].
+The library is built after the original [Kademlia Paper][paper_kademlia].
 
 For more information, take a look at the libraries [hackage page][hackage].
 
