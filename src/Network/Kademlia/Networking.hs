@@ -12,23 +12,28 @@ module Network.Kademlia.Networking
     , expect
     , closeK
     , KademliaHandle
+    , logInfo
+    , logError
+    , logError'
     ) where
 
+import           Control.Exception           (SomeException, catch)
 -- Just to make sure I'll only use the ByteString functions
-import Network.Socket hiding (send, sendTo, recv, recvFrom, Closed)
-import qualified Network.Socket.ByteString as S
-import Data.ByteString
-import Control.Monad (forever, unless)
-import Control.Exception (finally)
-import Control.Concurrent
-import Control.Concurrent.STM
-import Control.Concurrent.Chan
-import Control.Concurrent.MVar
-import System.IO.Error (ioError, userError)
+import           Control.Concurrent
+import           Control.Concurrent.Chan
+import           Control.Concurrent.MVar
+import           Control.Concurrent.STM
+import           Control.Exception           (finally)
+import           Control.Monad               (forever, unless, void)
+import           Data.ByteString             hiding (putStrLn)
+import qualified Data.ByteString             as BS
+import           Network.Socket              hiding (Closed, recv, recvFrom, send, sendTo)
+import qualified Network.Socket.ByteString   as S
+import           System.IO.Error             (ioError, userError)
 
-import Network.Kademlia.Types
-import Network.Kademlia.Protocol
-import Network.Kademlia.ReplyQueue
+import           Network.Kademlia.Protocol
+import           Network.Kademlia.ReplyQueue
+import           Network.Kademlia.Types
 
 -- | A handle to a UDP socket running the Kademlia connection
 data KademliaHandle i a = KH {
@@ -37,13 +42,19 @@ data KademliaHandle i a = KH {
     , sendChan   :: Chan (Command i a, Peer)
     , replyQueue :: ReplyQueue i a
     , recvThread :: MVar ThreadId
+    , logInfo    :: String -> IO ()
+    , logError   :: String -> IO ()
     }
+
+logError' :: KademliaHandle i a -> SomeException -> IO ()
+logError' h = logError h . show
 
 -- | Open a Kademlia connection on specified port and return a corresponding
 --   KademliaHandle
-openOn :: (Serialize i, Serialize a) => String -> i -> ReplyQueue i a
+openOn :: (Show i, Serialize i, Serialize a) => String -> i -> ReplyQueue i a
+       -> (String -> IO ()) -> (String -> IO ())
        -> IO (KademliaHandle i a)
-openOn port id rq = withSocketsDo $ do
+openOn port id rq logInfo logError = withSocketsDo $ do
     -- Get addr to bind to
     (serveraddr:_) <- getAddrInfo
                  (Just (defaultHints {addrFlags = [AI_PASSIVE]}))
@@ -54,17 +65,20 @@ openOn port id rq = withSocketsDo $ do
     bindSocket sock (addrAddress serveraddr)
 
     chan <- newChan
-    tId <- forkIO . sendProcess sock id $ chan
+    tId <- forkIO $ sendProcess sock id chan logInfo logError
     mvar <- newEmptyMVar
 
     -- Return the handle
-    return $ KH sock tId chan rq mvar
+    return $ KH sock tId chan rq mvar logInfo logError
 
-sendProcess :: (Serialize i, Serialize a) => Socket -> i
-            -> Chan (Command i a, Peer) -> IO ()
-sendProcess sock id chan = (withSocketsDo . forever $ do
-    (cmd, Peer host port) <- readChan chan
+sendProcess :: (Show i, Serialize i, Serialize a) => Socket -> i
+       -> Chan (Command i a, Peer)
+       -> (String -> IO ()) -> (String -> IO ())
+       -> IO ()
+sendProcess sock id chan logInfo logError = (withSocketsDo . forever . (`catch` logError') . void $ do
+    pair@(cmd, Peer host port) <- readChan chan
 
+    logInfo $ "Send process: sending .. " ++ show pair ++ " (id " ++ show id ++ ")"
     -- Get Peer's address
     (peeraddr:_) <- getAddrInfo Nothing (Just host)
                       (Just . show . fromIntegral $ port)
@@ -74,6 +88,9 @@ sendProcess sock id chan = (withSocketsDo . forever $ do
     S.sendTo sock sig (addrAddress peeraddr))
         -- Close socket on exception (ThreadKilled)
         `finally` sClose sock
+  where
+    logError' :: SomeException -> IO ()
+    logError' e = logError $ "Caught error " ++ show e
 
 -- | Dispatch the receiving process
 --
@@ -81,7 +98,7 @@ sendProcess sock id chan = (withSocketsDo . forever $ do
 --   fails, send it to the supplied default channel instead.
 --
 --   This throws an exception if called a second time.
-startRecvProcess :: (Serialize i, Serialize a, Eq i, Eq a) => KademliaHandle i a
+startRecvProcess :: (Show i, Serialize i, Serialize a, Eq i, Eq a) => KademliaHandle i a
                  -> IO ()
 startRecvProcess kh = do
     tId <- forkIO $ (withSocketsDo . forever $ do
@@ -90,12 +107,14 @@ startRecvProcess kh = do
         -- Try to create peer
         peer <- toPeer addr
         case peer of
-            Nothing -> return ()
+            Nothing -> logError kh ("Unknown peer " ++ show addr)
             Just p  ->
                 -- Try parsing the signal
                 case parse p received of
-                    Left _    -> return ()
-                    Right sig ->
+                    Left _    ->
+                      logError kh ("Can't parse " ++ show (BS.length received) ++ " bytes from " ++ show peer)
+                    Right sig -> do
+                        logInfo kh ("Received signal " ++ show sig ++ " from " ++ show peer)
                         -- Send the signal to the receivng process of instance
                         writeChan (timeoutChan . replyQueue $ kh) $ Answer sig)
 

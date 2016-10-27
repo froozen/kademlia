@@ -17,36 +17,37 @@ module Network.Kademlia.Instance
     , dumpPeers
     ) where
 
-import Control.Concurrent
-import Control.Concurrent.Chan
-import Control.Concurrent.STM
-import Control.Monad (void, forever, when, join, forM_, forever)
-import Control.Monad.Trans
-import Control.Monad.Trans.State hiding (state)
-import Control.Monad.Trans.Reader
-import Control.Monad.IO.Class (liftIO)
-import Control.Applicative ((<$>), (<*>))
-import System.IO.Error (catchIOError)
-import qualified Data.Map as M
-import Data.Maybe (catMaybes, isJust, fromJust)
-import Data.Function (on)
-import Data.Map (toList)
+import           Control.Applicative         ((<$>), (<*>))
+import           Control.Concurrent
+import           Control.Concurrent.Chan
+import           Control.Concurrent.STM
+import           Control.Exception           (catch)
+import           Control.Monad               (forM_, forever, forever, join, void, when)
+import           Control.Monad.IO.Class      (liftIO)
+import           Control.Monad.Trans
+import           Control.Monad.Trans.Reader
+import           Control.Monad.Trans.State   hiding (state)
+import           Data.Function               (on)
+import           Data.Map                    (toList)
+import qualified Data.Map                    as M
+import           Data.Maybe                  (catMaybes, fromJust, isJust)
+import           System.IO.Error             (catchIOError)
 
-import Network.Kademlia.Networking
-import qualified Network.Kademlia.Tree as T
-import Network.Kademlia.Types
-import Network.Kademlia.ReplyQueue
+import           Network.Kademlia.Networking
+import           Network.Kademlia.ReplyQueue
+import qualified Network.Kademlia.Tree       as T
+import           Network.Kademlia.Types
 
 -- | The handle of a running Kademlia Node
 data KademliaInstance i a = KI {
-      handle :: KademliaHandle i a
-    , state :: KademliaState i a
+      handle            :: KademliaHandle i a
+    , state             :: KademliaState i a
     , expirationThreads :: TVar (M.Map i ThreadId)
     }
 
 -- | Representation of the data the KademliaProcess carries
 data KademliaState i a = KS {
-      sTree   :: TVar (T.NodeTree i)
+      sTree  :: TVar (T.NodeTree i)
     , values :: TVar (M.Map i a)
     }
 
@@ -104,7 +105,7 @@ lookupValue key (KI _ (KS _ values) _) = atomically $ do
     return . M.lookup key $ vals
 
 -- | Start the background process for a KademliaInstance
-start :: (Serialize i, Ord i, Serialize a, Eq i, Eq a) =>
+start :: (Show i, Serialize i, Ord i, Serialize a, Eq i, Eq a) =>
          KademliaInstance i a -> ReplyQueue i a -> IO ()
 start inst rq = do
         startRecvProcess . handle $ inst
@@ -119,7 +120,7 @@ start inst rq = do
 receivingProcess :: (Serialize i, Serialize a, Eq i, Ord i) =>
        KademliaInstance i a -> ReplyQueue i a -> Chan (Reply i a)
     -> Chan (Reply i a)-> IO ()
-receivingProcess inst rq replyChan registerChan = forever $ do
+receivingProcess inst@(KI h _ _) rq replyChan registerChan = forever . (`catch` logError' h) $ do
     reply <- readChan replyChan
 
     case reply of
@@ -171,7 +172,7 @@ receivingProcess inst rq replyChan registerChan = forever $ do
                     result <- lookupNode inst . nodeId $ node
                     case result of
                         Nothing -> send (handle inst) (peer node) PING
-                        _ -> return ()
+                        _       -> return ()
                 _ -> return ()
 
         _ -> return ()
@@ -183,20 +184,12 @@ receivingProcess inst rq replyChan registerChan = forever $ do
 -- | The actual process running in the background
 backgroundProcess :: (Serialize i, Ord i, Serialize a, Eq i, Eq a) =>
     KademliaInstance i a -> Chan (Reply i a) -> [ThreadId] -> IO ()
-backgroundProcess inst chan threadIds = do
+backgroundProcess inst@(KI h _ _) chan threadIds = do
     reply <- liftIO . readChan $ chan
 
     case reply of
         Answer sig -> do
-            let node = source sig
-
-            -- Handle the signal
-            handleCommand (command sig) (peer node) inst
-
-            -- Insert the node into the tree, if it's allready known, it will
-            -- be refreshed
-            insertNode inst node
-
+            handleAnswer sig `catch` logError' h
             backgroundProcess inst chan threadIds
 
         -- Kill all other processes and stop on Closed
@@ -207,11 +200,19 @@ backgroundProcess inst chan threadIds = do
             mapM_ killThread $ map snd (M.toList eThreads)
 
         _ -> return ()
+  where
+    handleAnswer sig = do
+        let node = source sig
+        -- Handle the signal
+        handleCommand (command sig) (peer node) inst
+        -- Insert the node into the tree, if it's allready known, it will
+        -- be refreshed
+        insertNode inst node
 
 -- | Ping all known nodes every five minutes to make sure they are still present
 pingProcess :: (Serialize i, Serialize a, Eq i) => KademliaInstance i a
             -> Chan (Reply i a) -> IO ()
-pingProcess (KI h (KS sTree _) _) chan = forever $ do
+pingProcess (KI h (KS sTree _) _) chan = forever . (`catch` logError' h) $ do
     threadDelay fiveMinutes
 
     tree <- atomically . readTVar $ sTree
@@ -225,7 +226,7 @@ pingProcess (KI h (KS sTree _) _) chan = forever $ do
 -- | Store all values stored in the node in the 7 closest known nodes every hour
 spreadValueProcess :: (Serialize i, Serialize a, Eq i) => KademliaInstance i a
                    -> IO ()
-spreadValueProcess (KI h (KS sTree sValues) _) = forever $ do
+spreadValueProcess (KI h (KS sTree sValues) _) = forever . (`catch` logError' h) . void $ do
     threadDelay hour
 
     values <- atomically . readTVar $ sValues

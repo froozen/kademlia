@@ -20,11 +20,11 @@ module Network.Kademlia.Types
     , distance
     ) where
 
-import Network.Socket (SockAddr(..), PortNumber, inet_ntoa, inet_addr)
+import           Data.Bits       (setBit, testBit, zeroBits)
 import qualified Data.ByteString as B (ByteString, foldr, pack)
-import Data.Bits (testBit, setBit, zeroBits)
-import Data.List (sortBy)
-import Data.Function (on)
+import           Data.Function   (on)
+import           Data.List       (sortBy)
+import           Network.Socket  (PortNumber, SockAddr (..), inet_addr, inet_ntoa)
 
 -- | Representation of an UDP peer
 data Peer = Peer {
@@ -34,7 +34,7 @@ data Peer = Peer {
 
 -- | Representation of a Kademlia Node, containing a Peer and an Id
 data Node i = Node {
-      peer :: Peer
+      peer   :: Peer
     , nodeId :: i
     } deriving (Eq, Ord, Show)
 
@@ -89,7 +89,7 @@ toPeer _ = return Nothing
 
 -- | Representation of a protocl signal
 data Signal i v = Signal {
-      source :: Node i
+      source  :: Node i
     , command :: Command i v
     } deriving (Show, Eq)
 
@@ -101,4 +101,13 @@ data Command i a = PING
                  | RETURN_NODES i [Node i]
                  | FIND_VALUE   i
                  | RETURN_VALUE i a
-                   deriving (Eq, Show)
+                   deriving (Eq)
+
+instance Show i => Show (Command i a) where
+  show PING                   = "PING"
+  show PONG                   = "PONG"
+  show (STORE        i a)     = "STORE " ++ show i ++ " <data>"
+  show (FIND_NODE    i)       = "FIND_NODE " ++ show i
+  show (RETURN_NODES i nodes) = "RETURN_VALUE " ++ show i ++ " " ++ show nodes
+  show (FIND_VALUE   i)       = "FIND_VALUE " ++ show i
+  show (RETURN_VALUE i _)     = "RETURN_VALUE " ++ show i ++ " <data>"

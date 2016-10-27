@@ -126,23 +126,25 @@ module Network.Kademlia
     , Peer(..)
     ) where
 
-import Network.Kademlia.Networking
-import Network.Kademlia.Instance
-import qualified Network.Kademlia.Tree as T
-import Network.Kademlia.Types
-import Network.Kademlia.ReplyQueue
-import Network.Kademlia.Implementation as I
-import Prelude hiding (lookup)
-import Control.Monad (void, forM_)
-import Control.Concurrent.Chan
-import Control.Concurrent.STM
+import           Control.Concurrent.Chan
+import           Control.Concurrent.STM
+import           Control.Monad                   (forM_, void)
+import           Network.Kademlia.Implementation as I
+import           Network.Kademlia.Instance
+import           Network.Kademlia.Networking
+import           Network.Kademlia.ReplyQueue
+import qualified Network.Kademlia.Tree           as T
+import           Network.Kademlia.Types
+import           Prelude                         hiding (lookup)
 
 -- | Create a new KademliaInstance corresponding to a given Id on a given port
-create :: (Serialize i, Ord i, Serialize a, Eq a, Eq i) =>
-    Int -> i -> IO (KademliaInstance i a)
-create port id = do
+create :: (Show i, Serialize i, Ord i, Serialize a, Eq a, Eq i) =>
+    Int -> i
+    -> (String -> IO ()) -> (String -> IO ())
+    -> IO (KademliaInstance i a)
+create port id logInfo logError = do
     rq <- emptyReplyQueue
-    h <- openOn (show port) id rq
+    h <- openOn (show port) id rq logInfo logError
     inst <- newInstance id h
     start inst rq
     return inst
