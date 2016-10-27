@@ -114,10 +114,11 @@ startRecvProcess kh = do
                     Left _    ->
                       logError kh ("Can't parse " ++ show (BS.length received) ++ " bytes from " ++ show peer)
                     Right sig -> do
-                        logInfo kh ("Received signal " ++ show sig ++ " from " ++ show peer)
+                        logInfo kh ("Received signal " ++ show sig ++ " from " ++ show p)
                         -- Send the signal to the receivng process of instance
-                        writeChan (timeoutChan . replyQueue $ kh) $ Answer sig)
-
+                        writeChan (timeoutChan . replyQueue $ kh) $ Answer sig
+                        logInfo kh (" -- added from signal " ++ show p ++ " to chan")
+        )
             -- Send Closed reply to all handlers
             `finally` do
                 flush . replyQueue $ kh

@@ -117,11 +117,13 @@ start inst rq = do
         void . forkIO $ backgroundProcess inst dChan [pingId, spreadId, receivingId]
 
 -- | The central process all Replys go trough
-receivingProcess :: (Serialize i, Serialize a, Eq i, Ord i) =>
+receivingProcess :: (Show i, Serialize i, Serialize a, Eq i, Ord i) =>
        KademliaInstance i a -> ReplyQueue i a -> Chan (Reply i a)
     -> Chan (Reply i a)-> IO ()
 receivingProcess inst@(KI h _ _) rq replyChan registerChan = forever . (`catch` logError' h) $ do
     reply <- readChan replyChan
+
+    logInfo h $ "Received reply: " ++ show reply
 
     case reply of
         -- Handle a timed out node

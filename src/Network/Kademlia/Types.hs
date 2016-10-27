@@ -30,13 +30,19 @@ import           Network.Socket  (PortNumber, SockAddr (..), inet_addr, inet_nto
 data Peer = Peer {
       peerHost :: String
     , peerPort :: PortNumber
-    } deriving (Eq, Ord, Show)
+    } deriving (Eq, Ord)
+
+instance Show Peer where
+  show (Peer h p) = h ++ ":" ++ show p
 
 -- | Representation of a Kademlia Node, containing a Peer and an Id
 data Node i = Node {
       peer   :: Peer
     , nodeId :: i
-    } deriving (Eq, Ord, Show)
+    } deriving (Eq, Ord)
+
+instance Show i => Show (Node i) where
+  show (Node peer nodeId) = show peer ++ " (" ++ show nodeId ++ ")"
 
 -- | Sort a bucket by the closeness of its nodes to a give Id
 sortByDistanceTo :: (Serialize i) => [Node i] -> i -> [Node i]
