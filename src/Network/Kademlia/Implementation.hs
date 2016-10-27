@@ -14,19 +14,19 @@ module Network.Kademlia.Implementation
     , Network.Kademlia.Implementation.lookupNode
     ) where
 
-import Network.Kademlia.Networking
-import Network.Kademlia.Instance
-import qualified Network.Kademlia.Tree as T
-import Network.Kademlia.Types
-import Network.Kademlia.ReplyQueue
-import Prelude hiding (lookup)
-import Control.Monad (forM_, unless, when)
-import Control.Monad.Trans.State hiding (state)
-import Control.Concurrent.Chan
-import Control.Concurrent.STM
-import Control.Monad.IO.Class (liftIO)
-import Data.List (delete, find, (\\))
-import Data.Maybe (isJust, fromJust)
+import           Control.Concurrent.Chan
+import           Control.Concurrent.STM
+import           Control.Monad               (forM_, unless, when)
+import           Control.Monad.IO.Class      (liftIO)
+import           Control.Monad.Trans.State   hiding (state)
+import           Data.List                   (delete, find, (\\))
+import           Data.Maybe                  (fromJust, isJust)
+import           Network.Kademlia.Instance
+import           Network.Kademlia.Networking
+import           Network.Kademlia.ReplyQueue hiding (logError, logInfo)
+import qualified Network.Kademlia.Tree       as T
+import           Network.Kademlia.Types
+import           Prelude                     hiding (lookup)
 
 
 -- | Lookup the value corresponding to a key in the DHT and return it, together
@@ -145,7 +145,7 @@ joinNetwork inst node = ownId >>= runLookup go inst
                 tId <- gets targetId
                 case find (\node -> nodeId node == tId) nodes of
                     Just _ -> return IDClash
-                    _ -> continueLookup nodes sendS continue finish
+                    _      -> continueLookup nodes sendS continue finish
 
           -- Continuing always means waiting for the next signal
           continue = waitForReply finish checkSignal
@@ -170,7 +170,7 @@ lookupNode inst id = runLookup go inst id
           checkSignal (Signal _ (RETURN_NODES _ nodes)) =
                 case find (\(Node _ nId) -> nId == id) nodes of
                     Just node -> return . Just $ node
-                    _ -> continueLookup nodes sendS continue end
+                    _         -> continueLookup nodes sendS continue end
 
           -- Continuing always means waiting for the next signal
           continue = waitForReply end checkSignal
@@ -181,12 +181,12 @@ lookupNode inst id = runLookup go inst id
 
 -- | The state of a lookup
 data LookupState i a = LookupState {
-      inst :: KademliaInstance i a
-    , targetId :: i
+      inst      :: KademliaInstance i a
+    , targetId  :: i
     , replyChan :: Chan (Reply i a)
-    , known :: [Node i]
-    , pending :: [Node i]
-    , polled :: [Node i]
+    , known     :: [Node i]
+    , pending   :: [Node i]
+    , polled    :: [Node i]
     }
 
 -- | MonadTransformer context of a lookup

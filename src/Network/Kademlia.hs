@@ -143,7 +143,7 @@ create :: (Show i, Serialize i, Ord i, Serialize a, Eq a, Eq i) =>
     -> (String -> IO ()) -> (String -> IO ())
     -> IO (KademliaInstance i a)
 create port id logInfo logError = do
-    rq <- emptyReplyQueue
+    rq <- emptyReplyQueue logInfo logError
     h <- openOn (show port) id rq logInfo logError
     inst <- newInstance id h
     start inst rq

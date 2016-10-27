@@ -32,7 +32,7 @@ import qualified Network.Socket.ByteString   as S
 import           System.IO.Error             (ioError, userError)
 
 import           Network.Kademlia.Protocol
-import           Network.Kademlia.ReplyQueue
+import           Network.Kademlia.ReplyQueue hiding (logError, logInfo)
 import           Network.Kademlia.Types
 
 -- | A handle to a UDP socket running the Kademlia connection

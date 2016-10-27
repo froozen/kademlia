@@ -34,7 +34,7 @@ import           Data.Maybe                  (catMaybes, fromJust, isJust)
 import           System.IO.Error             (catchIOError)
 
 import           Network.Kademlia.Networking
-import           Network.Kademlia.ReplyQueue
+import           Network.Kademlia.ReplyQueue hiding (logError, logInfo)
 import qualified Network.Kademlia.Tree       as T
 import           Network.Kademlia.Types
 
@@ -184,15 +184,17 @@ receivingProcess inst@(KI h _ _) rq replyChan registerChan = forever . (`catch` 
 
 
 -- | The actual process running in the background
-backgroundProcess :: (Serialize i, Ord i, Serialize a, Eq i, Eq a) =>
+backgroundProcess :: (Show i, Serialize i, Ord i, Serialize a, Eq i, Eq a) =>
     KademliaInstance i a -> Chan (Reply i a) -> [ThreadId] -> IO ()
 backgroundProcess inst@(KI h _ _) chan threadIds = do
     reply <- liftIO . readChan $ chan
 
+    logInfo h $ "Register chan: reply " ++ show reply
+
     case reply of
         Answer sig -> do
             handleAnswer sig `catch` logError' h
-            backgroundProcess inst chan threadIds
+            repeatBP
 
         -- Kill all other processes and stop on Closed
         Closed -> do
@@ -201,8 +203,9 @@ backgroundProcess inst@(KI h _ _) chan threadIds = do
             eThreads <- atomically . readTVar . expirationThreads $ inst
             mapM_ killThread $ map snd (M.toList eThreads)
 
-        _ -> return ()
+        _ -> logInfo h "-- unknown reply" >> repeatBP
   where
+    repeatBP = backgroundProcess inst chan threadIds
     handleAnswer sig = do
         let node = source sig
         -- Handle the signal
