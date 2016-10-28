@@ -114,6 +114,7 @@ anything to handle this.
 module Network.Kademlia
     ( KademliaInstance
     , create
+    , createL
     , close
     , I.lookup
     , I.store
@@ -126,28 +127,36 @@ module Network.Kademlia
     , Peer(..)
     ) where
 
-import           Control.Concurrent.Chan
-import           Control.Concurrent.STM
-import           Control.Monad                   (forM_, void)
 import           Network.Kademlia.Implementation as I
 import           Network.Kademlia.Instance
 import           Network.Kademlia.Networking
 import           Network.Kademlia.ReplyQueue
-import qualified Network.Kademlia.Tree           as T
 import           Network.Kademlia.Types
 import           Prelude                         hiding (lookup)
 
 -- | Create a new KademliaInstance corresponding to a given Id on a given port
-create :: (Show i, Serialize i, Ord i, Serialize a, Eq a, Eq i) =>
-    Int -> i
-    -> (String -> IO ()) -> (String -> IO ())
+create
+    :: (Show i, Serialize i, Ord i, Serialize a, Eq a, Eq i)
+    => Int
+    -> i
     -> IO (KademliaInstance i a)
-create port id logInfo logError = do
-    rq <- emptyReplyQueue logInfo logError
-    h <- openOn (show port) id rq logInfo logError
-    inst <- newInstance id h
+create port id' = createL port id' (const $ pure ()) (const $ pure ())
+
+-- | Same as create, but with logging
+createL
+    :: (Show i, Serialize i, Ord i, Serialize a, Eq a, Eq i)
+    => Int
+    -> i
+    -> (String -> IO ())
+    -> (String -> IO ())
+    -> IO (KademliaInstance i a)
+createL port id' logInfo logError = do
+    rq <- emptyReplyQueueL logInfo logError
+    h <- openOnL (show port) id' rq logInfo logError
+    inst <- newInstance id' h
     start inst rq
     return inst
+
 
 -- | Stop a KademliaInstance by closing it
 close :: KademliaInstance i a -> IO ()

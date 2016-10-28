@@ -7,6 +7,7 @@ Network.Kademlia.Networking implements all the UDP network functionality.
 
 module Network.Kademlia.Networking
     ( openOn
+    , openOnL
     , startRecvProcess
     , send
     , expect
@@ -17,15 +18,9 @@ module Network.Kademlia.Networking
     , logError'
     ) where
 
-import           Control.Exception           (SomeException, catch)
--- Just to make sure I'll only use the ByteString functions
 import           Control.Concurrent
-import           Control.Concurrent.Chan
-import           Control.Concurrent.MVar
-import           Control.Concurrent.STM
-import           Control.Exception           (finally)
+import           Control.Exception           (SomeException, catch, finally)
 import           Control.Monad               (forever, unless, void)
-import           Data.ByteString             hiding (putStrLn)
 import qualified Data.ByteString             as BS
 import           Network.Socket              hiding (Closed, recv, recvFrom, send, sendTo)
 import qualified Network.Socket.ByteString   as S
@@ -49,12 +44,17 @@ data KademliaHandle i a = KH {
 logError' :: KademliaHandle i a -> SomeException -> IO ()
 logError' h = logError h . show
 
+openOn
+    :: (Show i, Serialize i, Serialize a)
+    => String -> i -> ReplyQueue i a -> IO (KademliaHandle i a)
+openOn port id' rq = openOnL port id' rq (const $ pure ()) (const $ pure ())
+
 -- | Open a Kademlia connection on specified port and return a corresponding
 --   KademliaHandle
-openOn :: (Show i, Serialize i, Serialize a) => String -> i -> ReplyQueue i a
+openOnL :: (Show i, Serialize i, Serialize a) => String -> i -> ReplyQueue i a
        -> (String -> IO ()) -> (String -> IO ())
        -> IO (KademliaHandle i a)
-openOn port id rq logInfo logError = withSocketsDo $ do
+openOnL port id' rq logInfo logError = withSocketsDo $ do
     -- Get addr to bind to
     (serveraddr:_) <- getAddrInfo
                  (Just (defaultHints {addrFlags = [AI_PASSIVE]}))
@@ -62,32 +62,37 @@ openOn port id rq logInfo logError = withSocketsDo $ do
 
     -- Create socket and bind to it
     sock <- socket (addrFamily serveraddr) Datagram defaultProtocol
-    bindSocket sock (addrAddress serveraddr)
+    bind sock (addrAddress serveraddr)
 
     chan <- newChan
-    tId <- forkIO $ sendProcess sock id chan logInfo logError
+    tId <- forkIO $ sendProcessL sock id' chan logInfo logError
     mvar <- newEmptyMVar
 
     -- Return the handle
     return $ KH sock tId chan rq mvar logInfo logError
 
-sendProcess :: (Show i, Serialize i, Serialize a) => Socket -> i
-       -> Chan (Command i a, Peer)
-       -> (String -> IO ()) -> (String -> IO ())
-       -> IO ()
-sendProcess sock id chan logInfo logError = (withSocketsDo . forever . (`catch` logError') . void $ do
-    pair@(cmd, Peer host port) <- readChan chan
+sendProcessL
+    :: (Show i, Serialize i, Serialize a)
+    => Socket
+    -> i
+    -> Chan (Command i a, Peer)
+    -> (String -> IO ())
+    -> (String -> IO ())
+    -> IO ()
+sendProcessL sock id chan logInfo logError =
+    (withSocketsDo . forever . (`catch` logError') . void $ do
+        pair@(cmd, Peer host port) <- readChan chan
 
-    logInfo $ "Send process: sending .. " ++ show pair ++ " (id " ++ show id ++ ")"
-    -- Get Peer's address
-    (peeraddr:_) <- getAddrInfo Nothing (Just host)
-                      (Just . show . fromIntegral $ port)
+        logInfo $ "Send process: sending .. " ++ show pair ++ " (id " ++ show id ++ ")"
+        -- Get Peer's address
+        (peeraddr:_) <- getAddrInfo Nothing (Just host)
+                          (Just . show . fromIntegral $ port)
 
-    -- Send the signal
-    let sig = serialize id cmd
-    S.sendTo sock sig (addrAddress peeraddr))
-        -- Close socket on exception (ThreadKilled)
-        `finally` sClose sock
+        -- Send the signal
+        let sig = serialize id cmd
+        S.sendTo sock sig (addrAddress peeraddr))
+            -- Close socket on exception (ThreadKilled)
+            `finally` close sock
   where
     logError' :: SomeException -> IO ()
     logError' e = logError $ "Caught error " ++ show e

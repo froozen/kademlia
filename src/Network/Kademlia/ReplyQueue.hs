@@ -14,17 +14,16 @@ module Network.Kademlia.ReplyQueue
     , Reply(..)
     , ReplyQueue(..)
     , emptyReplyQueue
+    , emptyReplyQueueL
     , register
     , dispatch
     , flush
     ) where
 
 import           Control.Concurrent
-import           Control.Concurrent.Chan
 import           Control.Concurrent.STM
-import           Control.Monad             (forM_, liftM3)
-import           Control.Monad.Trans.Maybe
-import           Data.List                 (delete, find)
+import           Control.Monad          (forM_)
+import           Data.List              (delete, find)
 
 import           Network.Kademlia.Types
 
@@ -79,9 +78,16 @@ data ReplyQueue i a = RQ {
     , logError    :: String -> IO ()
     }
 
+
 -- | Create a new ReplyQueue
-emptyReplyQueue :: (String -> IO ()) -> (String -> IO ()) -> IO (ReplyQueue i a)
-emptyReplyQueue logInfo logError = RQ <$> (atomically . newTVar $ []) <*> newChan <*> newChan <*> pure logInfo <*> pure logError
+emptyReplyQueue :: IO (ReplyQueue i a)
+emptyReplyQueue = emptyReplyQueueL (const $ pure ()) (const $ pure ())
+
+-- | Create a new ReplyQueue with loggers
+emptyReplyQueueL :: (String -> IO ()) -> (String -> IO ()) -> IO (ReplyQueue i a)
+emptyReplyQueueL logInfo logError =
+    RQ <$> (atomically . newTVar $ []) <*> newChan <*> newChan <*> pure logInfo <*>
+    pure logError
 
 -- | Register a channel as handler for a reply
 register :: (Eq i) => ReplyRegistration i -> ReplyQueue i a -> Chan (Reply i a)
