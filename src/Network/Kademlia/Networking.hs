@@ -155,4 +155,5 @@ closeK kh = do
     -- Kill sendThread
     killThread . sendThread $ kh
 
+    close $ kSock kh
     yield
