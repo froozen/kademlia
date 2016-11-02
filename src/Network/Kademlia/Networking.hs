@@ -62,6 +62,7 @@ openOnL port id' rq logInfo logError = withSocketsDo $ do
 
     -- Create socket and bind to it
     sock <- socket (addrFamily serveraddr) Datagram defaultProtocol
+    setSocketOption sock ReuseAddr 1
     bind sock (addrAddress serveraddr)
 
     chan <- newChan
