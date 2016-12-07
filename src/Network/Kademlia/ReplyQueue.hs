@@ -20,12 +20,13 @@ module Network.Kademlia.ReplyQueue
     , flush
     ) where
 
-import           Control.Concurrent
+import           Control.Concurrent     hiding (threadDelay)
 import           Control.Concurrent.STM
 import           Control.Monad          (forM_)
 import           Data.List              (delete, find)
 
 import           Network.Kademlia.Types
+import           Network.Kademlia.Utils
 
 -- | The different types a replied signal could possibly have.
 --
@@ -101,7 +102,7 @@ register reg rq chan = do
 timeoutThread :: (Eq i) => ReplyRegistration i -> ReplyQueue i a -> IO ThreadId
 timeoutThread reg rq = forkIO $ do
     -- Wait 5 seconds
-    threadDelay 5000000
+    threadDelay 5
 
     -- Remove the ReplyRegistration from the ReplyQueue
     myTId <- myThreadId

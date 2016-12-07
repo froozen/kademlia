@@ -37,6 +37,7 @@ library
                        Network.Kademlia.Protocol, Network.Kademlia.Instance,
                        Network.Kademlia.Protocol.Parsing, Network.Kademlia.Tree,
                        Network.Kademlia.ReplyQueue,
+                       Network.Kademlia.Utils,
                        Network.Kademlia.Implementation
 
   build-depends:       base >= 4.7 && < 5,
@@ -61,6 +62,7 @@ test-suite library-test
                        Network.Kademlia.Protocol, Network.Kademlia.Instance,
                        Network.Kademlia.Protocol.Parsing, Network.Kademlia.Tree,
                        Network.Kademlia.ReplyQueue,
+                       Network.Kademlia.Utils,
                        Network.Kademlia.Implementation,
                        Network.Kademlia
 

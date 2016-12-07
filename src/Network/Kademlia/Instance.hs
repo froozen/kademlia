@@ -20,7 +20,7 @@ module Network.Kademlia.Instance
     ) where
 
 import           Control.Applicative         ((<$>), (<*>))
-import           Control.Concurrent
+import           Control.Concurrent          hiding (threadDelay)
 import           Control.Concurrent.Chan
 import           Control.Concurrent.STM
 import           Control.Exception           (catch)
@@ -39,6 +39,7 @@ import           Network.Kademlia.Networking
 import           Network.Kademlia.ReplyQueue hiding (logError, logInfo)
 import qualified Network.Kademlia.Tree       as T
 import           Network.Kademlia.Types
+import           Network.Kademlia.Utils
 
 -- | The handle of a running Kademlia Node
 data KademliaInstance i a = KI {
@@ -226,7 +227,7 @@ backgroundProcess inst@(KI h _ _ _) chan threadIds = do
 pingProcess :: (Serialize i, Serialize a, Eq i) => KademliaInstance i a
             -> Chan (Reply i a) -> IO ()
 pingProcess (KI h (KS sTree _) _ _) chan = forever . (`catch` logError' h) $ do
-    threadDelay fiveMinutes
+    threadDelay (minute 5)
 
     tree <- atomically . readTVar $ sTree
     forM_ (T.toList tree) $ \node -> do
@@ -234,20 +235,18 @@ pingProcess (KI h (KS sTree _) _ _) chan = forever . (`catch` logError' h) $ do
         send h (peer node) PING
         expect h (RR [R_PONG] (nodeId node)) $ chan
 
-    where fiveMinutes = 300000000
-
 -- | Store all values stored in the node in the 7 closest known nodes every hour
 spreadValueProcess :: (Serialize i, Serialize a, Eq i) => KademliaInstance i a
                    -> IO ()
 spreadValueProcess (KI h (KS sTree sValues) _ _) = forever . (`catch` logError' h) . void $ do
-    threadDelay hour
+    threadDelay (hour 1)
 
     values <- atomically . readTVar $ sValues
     tree <- atomically . readTVar $ sTree
 
     mapMWithKey (sendRequests tree) $ values
 
-    where hour = 60 * 60 * 1000000
+    where
           sendRequests tree key val = do
             let closest = T.findClosest tree key 7
             forM_ closest $ \node -> send h (peer node) (STORE key val)
@@ -268,10 +267,8 @@ expirationProcess inst@(KI _ _ valueTs _) key = do
     -- Kill the old timeout thread, if it exists
     when (isJust oldTId) (killThread . fromJust $ oldTId)
 
-    threadDelay hour
+    threadDelay (hour 1)
     deleteValue key inst
-
-    where hour = 60 * 60 * 1000000
 
 -- | Handles the differendt Kademlia Commands appropriately
 handleCommand :: (Serialize i, Eq i, Ord i, Serialize a) =>
