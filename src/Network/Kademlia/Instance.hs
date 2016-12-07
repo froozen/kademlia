@@ -39,6 +39,7 @@ import           Network.Kademlia.Networking
 import           Network.Kademlia.ReplyQueue hiding (logError, logInfo)
 import qualified Network.Kademlia.Tree       as T
 import           Network.Kademlia.Types
+import           Network.Kademlia.Config
 import           Network.Kademlia.Utils
 
 -- | The handle of a running Kademlia Node
@@ -47,18 +48,6 @@ data KademliaInstance i a = KI {
     , state             :: KademliaState i a
     , expirationThreads :: TVar (M.Map i ThreadId)
     , config            :: KademliaConfig
-    }
-
-data KademliaConfig = KademliaConfig {
-      expirationTime :: Int -- in seconds
-    , storeValueTime :: Int -- in seconds
-    , pingTime       :: Int -- in seconds
-    }
-
-defaultConfig = KademliaConfig
-    { expirationTime = hour 1
-    , storeValueTime = hour 1
-    , pingTime       = minute 5
     }
 
 -- | Representation of the data the KademliaProcess carries
