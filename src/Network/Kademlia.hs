@@ -113,8 +113,10 @@ anything to handle this.
 
 module Network.Kademlia
     ( KademliaInstance
+    , KademliaConfig(..)
     , create
     , createL
+    , defaultConfig
     , close
     , I.lookup
     , I.store
@@ -140,20 +142,21 @@ create
     => Int
     -> i
     -> IO (KademliaInstance i a)
-create port id' = createL port id' (const $ pure ()) (const $ pure ())
+create port id' = createL port id' defaultConfig (const $ pure ()) (const $ pure ())
 
 -- | Same as create, but with logging
 createL
     :: (Show i, Serialize i, Ord i, Serialize a, Eq a, Eq i)
     => Int
     -> i
+    -> KademliaConfig
     -> (String -> IO ())
     -> (String -> IO ())
     -> IO (KademliaInstance i a)
-createL port id' logInfo logError = do
+createL port id' cfg logInfo logError = do
     rq <- emptyReplyQueueL logInfo logError
     h <- openOnL (show port) id' rq logInfo logError
-    inst <- newInstance id' h
+    inst <- newInstance id' cfg h
     start inst rq
     return inst
 
