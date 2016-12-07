@@ -50,9 +50,16 @@ data KademliaInstance i a = KI {
     }
 
 data KademliaConfig = KademliaConfig {
+      expirationTime :: Int -- in seconds
+    , storeValueTime :: Int -- in seconds
+    , pingTime       :: Int -- in seconds
     }
 
-defaultConfig = KademliaConfig {}
+defaultConfig = KademliaConfig
+    { expirationTime = hour 1
+    , storeValueTime = hour 1
+    , pingTime       = minute 5
+    }
 
 -- | Representation of the data the KademliaProcess carries
 data KademliaState i a = KS {
@@ -226,8 +233,8 @@ backgroundProcess inst@(KI h _ _ _) chan threadIds = do
 -- | Ping all known nodes every five minutes to make sure they are still present
 pingProcess :: (Serialize i, Serialize a, Eq i) => KademliaInstance i a
             -> Chan (Reply i a) -> IO ()
-pingProcess (KI h (KS sTree _) _ _) chan = forever . (`catch` logError' h) $ do
-    threadDelay (minute 5)
+pingProcess (KI h (KS sTree _) _ cfg) chan = forever . (`catch` logError' h) $ do
+    threadDelay (pingTime cfg)
 
     tree <- atomically . readTVar $ sTree
     forM_ (T.toList tree) $ \node -> do
@@ -238,8 +245,8 @@ pingProcess (KI h (KS sTree _) _ _) chan = forever . (`catch` logError' h) $ do
 -- | Store all values stored in the node in the 7 closest known nodes every hour
 spreadValueProcess :: (Serialize i, Serialize a, Eq i) => KademliaInstance i a
                    -> IO ()
-spreadValueProcess (KI h (KS sTree sValues) _ _) = forever . (`catch` logError' h) . void $ do
-    threadDelay (hour 1)
+spreadValueProcess (KI h (KS sTree sValues) _ cfg) = forever . (`catch` logError' h) . void $ do
+    threadDelay (storeValueTime cfg)
 
     values <- atomically . readTVar $ sValues
     tree <- atomically . readTVar $ sTree
@@ -256,7 +263,7 @@ spreadValueProcess (KI h (KS sTree sValues) _ _) = forever . (`catch` logError' 
 
 -- | Delete a value after a certain amount of time has passed
 expirationProcess :: (Ord i) => KademliaInstance i a -> i -> IO ()
-expirationProcess inst@(KI _ _ valueTs _) key = do
+expirationProcess inst@(KI _ _ valueTs cfg) key = do
     -- Map own ThreadId to the key
     myTId <- myThreadId
     oldTId <- atomically $ do
@@ -267,7 +274,7 @@ expirationProcess inst@(KI _ _ valueTs _) key = do
     -- Kill the old timeout thread, if it exists
     when (isJust oldTId) (killThread . fromJust $ oldTId)
 
-    threadDelay (hour 1)
+    threadDelay (expirationTime cfg)
     deleteValue key inst
 
 -- | Handles the differendt Kademlia Commands appropriately
