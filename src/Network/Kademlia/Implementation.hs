@@ -1,3 +1,5 @@
+{-# LANGUAGE ScopedTypeVariables #-}
+
 {-|
 Module      : Network.Kademlia.Implementation
 Description : The details of the lookup algorithm
@@ -157,37 +159,47 @@ joinNetwork inst node = ownId >>= runLookup go inst
           finish = return JoinSucces
 
 -- | Lookup the Node corresponding to the supplied ID
-lookupNode :: (Serialize i, Serialize a, Eq i, Ord i)
-           => KademliaInstance i a -> i
+lookupNode :: forall i a .
+              (Serialize i, Serialize a, Eq i, Ord i)
+           => KademliaInstance i a
+           -> i
            -> IO (Maybe (Node i))
 lookupNode inst id = runLookup go inst id
-    where go = startLookup (config inst) sendS end checkSignal
+  where
+    go :: LookupM i a (Maybe (Node i))
+    go = startLookup (config inst) sendS end checkSignal
 
-          -- Return Nothing on lookup failure
-          end = return Nothing
+    -- Return empty list on lookup failure
+    end :: LookupM i a (Maybe (Node i))
+    end = return Nothing
 
-          -- Check wether the Node we are looking for was found. If so, return
-          -- it, otherwise continue the lookup.
-          checkSignal (Signal _ (RETURN_NODES _ nodes)) =
-                case find (\(Node _ nId) -> nId == id) nodes of
-                    Just node -> return . Just $ node
-                    _         -> continueLookup nodes sendS continue end
+    -- Check wether the Node we are looking for was found. There are two cases after receiving:
+    -- * If we didn't found node then continue lookup
+    -- * otherwise: return found node
+    checkSignal :: Signal i v -> LookupM i a (Maybe (Node i))
+    checkSignal (Signal _ (RETURN_NODES _ nodes)) = do
+        let targetNode = find ((== id) . nodeId) nodes
+        case targetNode of
+            Nothing  -> continueLookup nodes sendS continue end
+            justNode -> return justNode
+    checkSignal _ = end  -- maybe it should be `panic` if we get some other return result
 
-          -- Continuing always means waiting for the next signal
-          continue = waitForReply end checkSignal
+    -- Continuing always means waiting for the next signal
+    continue :: LookupM i a (Maybe (Node i))
+    continue = waitForReply end checkSignal
 
-          -- Send a FIND_NODE command looking for the Node corresponding to the
-          -- id
-          sendS = sendSignal (FIND_NODE id)
+    -- Send a FIND_NODE command looking for the Node corresponding to the id
+    sendS :: (Serialize i, Serialize a, Eq i) => Node i -> LookupM i a ()
+    sendS = sendSignal (FIND_NODE id)
 
 -- | The state of a lookup
 data LookupState i a = LookupState {
-      inst      :: KademliaInstance i a
-    , targetId  :: i
-    , replyChan :: Chan (Reply i a)
-    , known     :: [Node i]
-    , pending   :: [Node i]
-    , polled    :: [Node i]
+      inst      :: !(KademliaInstance i a)
+    , targetId  :: !i
+    , replyChan :: !(Chan (Reply i a))
+    , known     :: ![Node i]
+    , pending   :: ![Node i]
+    , polled    :: ![Node i]
     }
 
 -- | MonadTransformer context of a lookup
@@ -227,8 +239,10 @@ startLookup cfg sendSignal cancel onSignal = do
                 waitForReply cancel onSignal
 
 -- Wait for the next reply and handle it appropriately
-waitForReply :: (Serialize i, Serialize a, Ord i) => LookupM i a b
-             -> (Signal i a -> LookupM i a b) -> LookupM i a b
+waitForReply :: (Serialize i, Serialize a, Ord i)
+             => LookupM i a b
+             -> (Signal i a -> LookupM i a b)
+             -> LookupM i a b
 waitForReply cancel onSignal = do
     chan <- gets replyChan
     sPending <- gets pending

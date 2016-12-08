@@ -102,7 +102,7 @@ storeAndLookupCheck ids keys = monadicIO $ do
             result <- K.lookup inst key
             case result of
                 Just (v, _) -> return $ v == val
-                _ -> return False
+                _           -> return False
 
 lookupNodesCheck :: IdBunch IdType -> Property
 lookupNodesCheck ids = monadicIO $ do
@@ -119,4 +119,4 @@ lookupNodesCheck ids = monadicIO $ do
     assert . and $ success
 
     where tryLookup inst id = check id <$> K.lookupNode inst id
-          check id result = isJust result && id == (nodeId . fromJust $ result)
+          check id = maybe False ((== id) . nodeId)
