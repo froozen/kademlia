@@ -34,7 +34,7 @@ import           Prelude                     hiding (lookup)
 lookup :: (Serialize i, Serialize a, Eq i, Ord i) => KademliaInstance i a -> i
        -> IO (Maybe (a, Node i))
 lookup inst id = runLookup go inst id
-    where go = startLookup sendS cancel checkSignal
+    where go = startLookup (config inst) sendS cancel checkSignal
 
           -- Return Nothing on lookup failure
           cancel = return Nothing
@@ -89,7 +89,7 @@ lookup inst id = runLookup go inst id
 store :: (Serialize i, Serialize a, Eq i, Ord i) =>
          KademliaInstance i a -> i -> a -> IO ()
 store inst key val = runLookup go inst key
-    where go = startLookup sendS end checkSignal
+    where go = startLookup (config inst) sendS end checkSignal
 
           -- Always add the nodes into the loop and continue the lookup
           checkSignal (Signal _ (RETURN_NODES _ nodes)) =
@@ -157,10 +157,11 @@ joinNetwork inst node = ownId >>= runLookup go inst
           finish = return JoinSucces
 
 -- | Lookup the Node corresponding to the supplied ID
-lookupNode :: (Serialize i, Serialize a, Eq i, Ord i) => KademliaInstance i a -> i
+lookupNode :: (Serialize i, Serialize a, Eq i, Ord i)
+           => KademliaInstance i a -> i
            -> IO (Maybe (Node i))
 lookupNode inst id = runLookup go inst id
-    where go = startLookup sendS end checkSignal
+    where go = startLookup (config inst) sendS end checkSignal
 
           -- Return Nothing on lookup failure
           end = return Nothing
@@ -201,16 +202,18 @@ runLookup lookup inst id = do
     evalStateT lookup state
 
 -- The initial phase of the normal kademlia lookup operation
-startLookup :: (Serialize i, Serialize a, Eq i, Ord i) => (Node i -> LookupM i a ())
+startLookup :: (Serialize i, Serialize a, Eq i, Ord i)
+            => KademliaConfig
+            -> (Node i -> LookupM i a ())
             -> LookupM i a b -> (Signal i a -> LookupM i a b) -> LookupM i a b
-startLookup sendSignal cancel onSignal = do
+startLookup cfg sendSignal cancel onSignal = do
     inst <- gets inst
     tree <- liftIO . atomically . readTVar . sTree . state $ inst
     chan <- gets replyChan
     id <- gets targetId
 
     -- Find the three nodes closest to the supplied id
-    case T.findClosest tree id 3 of
+    case T.findClosest tree id (nbLookupNodes cfg) of
             [] -> cancel
             closest -> do
                 -- Send a signal to each of the Nodes
