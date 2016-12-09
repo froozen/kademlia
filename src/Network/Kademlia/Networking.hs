@@ -20,7 +20,7 @@ module Network.Kademlia.Networking
 
 import           Control.Concurrent
 import           Control.Exception           (SomeException, catch, finally)
-import           Control.Monad               (forever, unless, void)
+import           Control.Monad               (forM_, forever, unless, void)
 import qualified Data.ByteString             as BS
 import           Network.Socket              hiding (Closed, recv, recvFrom, send, sendTo)
 import qualified Network.Socket.ByteString   as S
@@ -90,13 +90,16 @@ sendProcessL sock id chan logInfo logError =
                           (Just . show . fromIntegral $ port)
 
         -- Send the signal
-        let sig = serialize id cmd
-        S.sendTo sock sig (addrAddress peeraddr))
-            -- Close socket on exception (ThreadKilled)
-            `finally` close sock
+        case serialize datagramMaxSize id cmd of
+            Left err   -> logError err
+            Right sigs -> forM_ sigs $ \sig -> S.sendTo sock sig (addrAddress peeraddr))
+                -- Close socket on exception (ThreadKilled)
+                `finally` close sock
   where
     logError' :: SomeException -> IO ()
     logError' e = logError $ "Caught error " ++ show e
+
+    datagramMaxSize = 1200
 
 -- | Dispatch the receiving process
 --
