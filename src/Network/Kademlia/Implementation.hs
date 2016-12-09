@@ -210,7 +210,7 @@ startLookup cfg sendSignal cancel onSignal = do
     inst <- gets inst
     tree <- liftIO . atomically . readTVar . sTree . state $ inst
     chan <- gets replyChan
-    id <- gets targetId
+    id   <- gets targetId
 
     -- Find the three nodes closest to the supplied id
     case T.findClosest tree id (nbLookupNodes cfg) of

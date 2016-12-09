@@ -7,15 +7,17 @@ Tests specific to Network.Kademlia.Tree.
 
 module Tree where
 
-import Test.QuickCheck
 
-import qualified Network.Kademlia.Tree as T
-import Network.Kademlia.Types
-import Control.Monad (liftM)
-import Data.List (sortBy)
-import Data.Maybe (isJust)
+import           Control.Monad          (liftM)
+import           Data.List              (sortBy)
+import           Data.Maybe             (isJust)
+import           System.Random          (mkStdGen)
+import           Test.QuickCheck
 
-import TestTypes
+import qualified Network.Kademlia.Tree  as T
+import           Network.Kademlia.Types
+
+import           TestTypes
 
 -- | Helper method for lookup checking
 lookupCheck :: (Serialize i, Eq i) => T.NodeTree i -> Node i -> Bool
@@ -84,3 +86,13 @@ findClosestCheck id = withTree f
                  packed = zip contained $ map distanceF contained
                  distanceF = distance id . nodeId
                  sort = sortBy $ \(_, a) (_, b) -> compare a b
+
+-- | Check that 'T.pickupNotClosest' doesn't return closest nodes.
+pickupNotClosestDifferentCheck :: IdType -> NodeBunch IdType -> IdType -> Property
+pickupNotClosestDifferentCheck nid = withTree verifyNotClosest
+  where
+    verifyNotClosest :: T.NodeTree IdType -> [Node IdType] -> Property
+    verifyNotClosest tree _ =
+        let closest    = T.findClosest tree nid 7
+            notClosest = T.pickupNotClosest tree nid 7 Nothing (mkStdGen 42)
+        in property $ all (`notElem` notClosest) closest
