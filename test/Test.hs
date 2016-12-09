@@ -8,17 +8,17 @@ the way it's supposed to.
 
 module Main where
 
-import Test.Tasty
-import Test.Tasty.QuickCheck as QC
-import Test.Tasty.HUnit as HU
+import           Test.Tasty
+import           Test.Tasty.HUnit      as HU
+import           Test.Tasty.QuickCheck as QC
 
-import Types
-import Protocol
-import Networking
-import Tree
-import Instance
-import ReplyQueue
-import Implementation
+import           Implementation
+import           Instance
+import           Networking
+import           Protocol
+import           ReplyQueue
+import           Tree
+import           Types
 
 main = defaultMain tests
 
@@ -69,6 +69,8 @@ treeChecks = testGroup "Network.Kademlia.Tree" [
          refreshCheck
     , QC.testProperty "Finding closest works"
          findClosestCheck
+    , QC.testProperty "Not closest doesn't contain closest"
+         pickupNotClosestDifferentCheck
     ]
 
 instanceChecks = testGroup "Network.Kademlia.Instance" [
