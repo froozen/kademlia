@@ -9,21 +9,26 @@ This module is designed to be used as a qualified import.
 -}
 
 module Network.Kademlia.Tree
-    ( NodeTree
-    , create
-    , insert
-    , lookup
-    , delete
-    , handleTimeout
-    , findClosest
-    , extractId
-    , toList
-    , fold
-    ) where
+       ( NodeTree
+       , create
+       , insert
+       , lookup
+       , delete
+       , handleTimeout
+       , findClosest
+       , extractId
+       , toList
+       , fold
+       ) where
 
-import Prelude hiding (lookup)
-import Network.Kademlia.Types
-import qualified Data.List as L (find, delete)
+import           Prelude                hiding (lookup)
+
+import           Control.Monad.Random   (evalRand)
+import qualified Data.List              as L (delete, find)
+import           System.Random          (StdGen)
+import           System.Random.Shuffle  (shuffleM)
+
+import           Network.Kademlia.Types
 
 data NodeTree i = NodeTree ByteStruct (NodeTreeElem i)
 
@@ -185,13 +190,24 @@ split tree splitId = modifyAt tree splitId f
                                       else (n:left, right)
 
 -- | Find the k closest Nodes to a given Id
-findClosest :: (Serialize i) => NodeTree i -> i -> Int -> [Node i]
-findClosest (NodeTree idStruct elem) id n =
-    let targetStruct = toByteStruct id
-    in go idStruct targetStruct elem n
+findClosest
+    :: (Eq i, Serialize i)
+    => NodeTree i
+    -> i
+    -> Int
+    -> StdGen
+    -> [Node i]
+findClosest tree@(NodeTree idStruct elem) id n randGen =
+    let targetStruct  = toByteStruct id
+        nClosest      = go idStruct targetStruct elem n
+        treeList      = toList tree
+        notChosen     = filter (`notElem` nClosest) treeList
+        n'            = uncurry (+) $ n `divMod` 2
+        shuffledNodes = evalRand (shuffleM notChosen) randGen
+    in nClosest ++ take n' shuffledNodes
     where -- This function is partial for the same reason as in modifyAt
           --
-          -- Take the n closest nodes
+          -- Take the n closest nodes + n/2 random nodes
           go _ _ (Bucket (nodes, _)) n
             | length nodes <= n = map fst nodes
             | otherwise = take n . sortByDistanceTo (map fst nodes) $ id
@@ -222,10 +238,10 @@ idMatches id node = id == nodeId node
 toList :: NodeTree i -> [Node i]
 toList (NodeTree _ elems) = go elems
     where go (Split left right) = go left ++ go right
-          go (Bucket b) = map fst . fst $ b
+          go (Bucket b)         = map fst . fst $ b
 
 -- | Fold over the buckets
 fold :: ([Node i] -> a -> a) -> a -> NodeTree i -> a
 fold f init (NodeTree _ elems) = go init elems
     where go a (Split left right) = let a' = go a left in go a' right
-          go a (Bucket b) = f (map fst . fst $ b) a
+          go a (Bucket b)         = f (map fst . fst $ b) a

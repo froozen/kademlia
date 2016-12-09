@@ -34,12 +34,13 @@ import           Data.Map                    (toList)
 import qualified Data.Map                    as M
 import           Data.Maybe                  (catMaybes, fromJust, isJust)
 import           System.IO.Error             (catchIOError)
+import           System.Random               (newStdGen)
 
+import           Network.Kademlia.Config
 import           Network.Kademlia.Networking
 import           Network.Kademlia.ReplyQueue hiding (logError, logInfo)
 import qualified Network.Kademlia.Tree       as T
 import           Network.Kademlia.Types
-import           Network.Kademlia.Config
 import           Network.Kademlia.Utils
 
 -- | The handle of a running Kademlia Node
@@ -156,12 +157,13 @@ receivingProcess inst@(KI h _ _ _) rq replyChan registerChan = forever . (`catch
 
             -- This node is not yet known
             when (not . isJust . T.lookup tree $ originId) $ do
-                let closestKnown = T.findClosest tree originId 1
-                    ownId = T.extractId tree
-                    self = node { nodeId = ownId }
-                    bucket = self:closestKnown
-                    -- Find out closest known node
-                    closestId = nodeId . head . sortByDistanceTo bucket $ originId
+                rndGen          <- newStdGen
+                let closestKnown = T.findClosest tree originId 1 rndGen
+                let ownId        = T.extractId tree
+                let self         = node { nodeId = ownId }
+                let bucket       = self:closestKnown
+                -- Find out closest known node
+                let closestId    = nodeId . head . sortByDistanceTo bucket $ originId
 
                 -- This node can be assumed to be closest to the new node
                 when (ownId == closestId) $ do
@@ -244,7 +246,8 @@ spreadValueProcess (KI h (KS sTree sValues) _ cfg) = forever . (`catch` logError
 
     where
           sendRequests tree key val = do
-            let closest = T.findClosest tree key 7
+            rndGen     <- newStdGen
+            let closest = T.findClosest tree key 7 rndGen
             forM_ closest $ \node -> send h (peer node) (STORE key val)
 
           mapMWithKey :: (k -> v -> IO a) -> M.Map k v -> IO [a]
@@ -289,6 +292,7 @@ handleCommand _ _ _ = return ()
 returnNodes :: (Serialize i, Eq i, Ord i, Serialize a) =>
     Peer -> i -> KademliaInstance i a -> IO ()
 returnNodes peer id (KI h (KS sTree _) _ _) = do
-    tree <- atomically . readTVar $ sTree
-    let nodes = T.findClosest tree id 7
+    tree     <- atomically . readTVar $ sTree
+    rndGen   <- newStdGen
+    let nodes = T.findClosest tree id 7 rndGen
     liftIO $ send h peer (RETURN_NODES id nodes)
