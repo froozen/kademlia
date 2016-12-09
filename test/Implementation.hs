@@ -26,8 +26,8 @@ import qualified Data.ByteString.Char8 as C
 
 constructNetwork :: IdBunch IdType -> PropertyM IO [KademliaInstance IdType String]
 constructNetwork idBunch = run $ do
-    let entryNode = Node (Peer "127.0.0.1" 1123) (head . getIds $ idBunch)
-    instances <- zipWithM K.create [1123..] (getIds idBunch)
+    let entryNode = Node (Peer "127.0.0.1" 3123) (head . getIds $ idBunch)
+    instances <- zipWithM K.create [3123..] (getIds idBunch)
                         :: IO [KademliaInstance IdType String]
 
     forM_ (tail instances) (`K.joinNetwork` entryNode)
