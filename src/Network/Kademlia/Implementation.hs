@@ -27,7 +27,6 @@ import           Network.Kademlia.ReplyQueue hiding (logError, logInfo)
 import qualified Network.Kademlia.Tree       as T
 import           Network.Kademlia.Types
 import           Prelude                     hiding (lookup)
-import           System.Random               (newStdGen)
 
 
 -- | Lookup the value corresponding to a key in the DHT and return it, together
@@ -214,8 +213,7 @@ startLookup cfg sendSignal cancel onSignal = do
     id   <- gets targetId
 
     -- Find the three nodes closest to the supplied id
-    rndGen <- liftIO newStdGen
-    case T.findClosest tree id (nbLookupNodes cfg) rndGen of
+    case T.findClosest tree id (nbLookupNodes cfg) of
             [] -> cancel
             closest -> do
                 -- Send a signal to each of the Nodes

@@ -157,8 +157,7 @@ receivingProcess inst@(KI h _ _ _) rq replyChan registerChan = forever . (`catch
 
             -- This node is not yet known
             when (not . isJust . T.lookup tree $ originId) $ do
-                rndGen          <- newStdGen
-                let closestKnown = T.findClosest tree originId 1 rndGen
+                let closestKnown = T.findClosest tree originId 1
                 let ownId        = T.extractId tree
                 let self         = node { nodeId = ownId }
                 let bucket       = self:closestKnown
@@ -246,8 +245,7 @@ spreadValueProcess (KI h (KS sTree sValues) _ cfg) = forever . (`catch` logError
 
     where
           sendRequests tree key val = do
-            rndGen     <- newStdGen
-            let closest = T.findClosest tree key 7 rndGen
+            let closest = T.findClosest tree key 7
             forM_ closest $ \node -> send h (peer node) (STORE key val)
 
           mapMWithKey :: (k -> v -> IO a) -> M.Map k v -> IO [a]
@@ -292,7 +290,9 @@ handleCommand _ _ _ = return ()
 returnNodes :: (Serialize i, Eq i, Ord i, Serialize a) =>
     Peer -> i -> KademliaInstance i a -> IO ()
 returnNodes peer id (KI h (KS sTree _) _ _) = do
-    tree     <- atomically . readTVar $ sTree
-    rndGen   <- newStdGen
-    let nodes = T.findClosest tree id 7 rndGen
+    tree           <- atomically . readTVar $ sTree
+    rndGen         <- newStdGen
+    let closest     = T.findClosest tree id 7
+    let randomNodes = T.pickupNotClosest tree id 7 (Just closest) rndGen
+    let nodes       = closest ++ randomNodes
     liftIO $ send h peer (RETURN_NODES id nodes)

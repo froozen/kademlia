@@ -15,6 +15,7 @@ module Network.Kademlia.Tree
        , lookup
        , delete
        , handleTimeout
+       , pickupNotClosest
        , findClosest
        , extractId
        , toList
@@ -23,8 +24,9 @@ module Network.Kademlia.Tree
 
 import           Prelude                hiding (lookup)
 
+import           Control.Error.Util     ((?:))
 import           Control.Monad.Random   (evalRand)
-import qualified Data.List              as L (delete, find)
+import qualified Data.List              as L (delete, find, genericTake)
 import           System.Random          (StdGen)
 import           System.Random.Shuffle  (shuffleM)
 
@@ -189,42 +191,53 @@ split tree splitId = modifyAt tree splitId f
                                       then (left, n:right)
                                       else (n:left, right)
 
--- | Find the k closest Nodes to a given Id
-findClosest
+-- | Returns @⌈n/2⌉@ random nodes from @all \\ findClosest n@.
+pickupNotClosest
     :: (Eq i, Serialize i)
     => NodeTree i
     -> i
-    -> Int
+    -> Word
+    -> Maybe [Node i]
     -> StdGen
     -> [Node i]
-findClosest tree@(NodeTree idStruct elem) id n randGen =
-    let targetStruct  = toByteStruct id
-        nClosest      = go idStruct targetStruct elem n
+pickupNotClosest tree nodeId n maybeClosest randGen =
+    let nClosest      = maybeClosest ?: findClosest tree nodeId (fromIntegral n)
         treeList      = toList tree
         notChosen     = filter (`notElem` nClosest) treeList
         n'            = uncurry (+) $ n `divMod` 2
         shuffledNodes = evalRand (shuffleM notChosen) randGen
-    in nClosest ++ take n' shuffledNodes
-    where -- This function is partial for the same reason as in modifyAt
-          --
-          -- Take the n closest nodes + n/2 random nodes
-          go _ _ (Bucket (nodes, _)) n
-            | length nodes <= n = map fst nodes
-            | otherwise = take n . sortByDistanceTo (map fst nodes) $ id
-          -- Take the closest nodes from the left child first, if those aren't
-          -- enough, take the rest from the right
-          go (i:is) (False:ts) (Split left right) n =
-            let result = go is ts left n
-            in if length result == n
-                then result
-                else result ++ go is ts right n
-          -- Take the closest nodes from the right child first, if those aren't
-          -- enough, take the rest from the left
-          go (i:is) (True:ts) (Split left right) n =
-            let result = go is ts right n
-            in if length result == n
-                then result
-                else result ++ go is ts left n
+    in L.genericTake n' shuffledNodes
+
+-- | Find the k closest Nodes to a given Id
+findClosest
+    :: (Serialize i)
+    => NodeTree i
+    -> i
+    -> Int
+    -> [Node i]
+findClosest (NodeTree idStruct elem) id n =
+    let targetStruct = toByteStruct id
+    in go idStruct targetStruct elem n
+  where -- This function is partial for the same reason as in modifyAt
+   --
+   -- Take the n closest nodes + n/2 random nodes
+   go _ _ (Bucket (nodes, _)) n
+     | length nodes <= n = map fst nodes
+     | otherwise = take n . sortByDistanceTo (map fst nodes) $ id
+   -- Take the closest nodes from the left child first, if those aren't
+   -- enough, take the rest from the right
+   go (i:is) (False:ts) (Split left right) n =
+     let result = go is ts left n
+     in if length result == n
+         then result
+         else result ++ go is ts right n
+   -- Take the closest nodes from the right child first, if those aren't
+   -- enough, take the rest from the left
+   go (i:is) (True:ts) (Split left right) n =
+     let result = go is ts right n
+     in if length result == n
+         then result
+         else result ++ go is ts left n
 
 -- Extract original Id from NodeTree
 extractId :: (Serialize i) => NodeTree i -> i

@@ -11,7 +11,6 @@ module Tree where
 import           Control.Monad          (liftM)
 import           Data.List              (sortBy)
 import           Data.Maybe             (isJust)
-import           System.Random          (mkStdGen)
 import           Test.QuickCheck
 
 import qualified Network.Kademlia.Tree  as T
@@ -77,7 +76,7 @@ findClosestCheck id = withTree f
                   where prop node = node `elem` treeClosest
                         text node = "Failed to find: " ++ show node
 
-                 treeClosest = T.findClosest tree id 7 (mkStdGen 42)
+                 treeClosest = T.findClosest tree id 7
 
                  contained = filter contains nodes
                  contains node = isJust . T.lookup tree . nodeId $ node
