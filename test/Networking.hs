@@ -14,7 +14,6 @@ import           Control.Concurrent.Chan
 import           Control.Concurrent.STM
 import           Control.Monad
 import qualified Data.ByteString.Char8       as C
-import           Data.Default                (def)
 import           Data.Maybe                  (isJust)
 import           Network.Kademlia.Networking
 import           Network.Kademlia.ReplyQueue
@@ -41,8 +40,8 @@ sendCheck cmd = monadicIO $ do
         rqA <- emptyReplyQueue
         rqB <- emptyReplyQueue
 
-        khA <- openOn "1122" idA def rqA
-        khB <- (openOn "1123" idB def rqB
+        khA <- openOn "1122" idA rqA
+        khB <- (openOn "1123" idB rqB
                     :: IO (KademliaHandle IdType String))
 
         startRecvProcess khB
@@ -72,7 +71,7 @@ expectCheck sig idA = monadicIO $ do
     replySig <- run $ do
         rqA <- emptyReplyQueue
 
-        khA <- openOn "1122" idA def rqA
+        khA <- openOn "1122" idA rqA
 
         startRecvProcess khA
 

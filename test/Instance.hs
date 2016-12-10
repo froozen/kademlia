@@ -46,8 +46,8 @@ handlesPingCheck = do
 
     rq <- emptyReplyQueue
 
-    khA <- openOn "1122" idA def rq :: IO (KademliaHandle IdType String)
-    kiB <- create 1123 idB def   :: IO (KademliaInstance IdType String)
+    khA <- openOn "1122" idA rq :: IO (KademliaHandle IdType String)
+    kiB <- create 1123 idB   :: IO (KademliaInstance IdType String)
 
     startRecvProcess khA
 
@@ -72,8 +72,8 @@ storeAndFindValueCheck key value = monadicIO $ do
     receivedCmd <- run $ do
         rq <- emptyReplyQueue
 
-        khA <- openOn "1122" idA def rq
-        kiB <- create 1123 idB def :: IO (KademliaInstance IdType String)
+        khA <- openOn "1122" idA rq
+        kiB <- create 1123 idB :: IO (KademliaInstance IdType String)
 
         startRecvProcess khA
 
@@ -110,8 +110,8 @@ trackingKnownPeersCheck = monadicIO $ do
     (node, kiB) <- run $ do
         rq <- emptyReplyQueue :: IO (ReplyQueue IdType String)
 
-        khA <- openOn "1122" idA def rq
-        kiB <- create 1123 idB def :: IO (KademliaInstance IdType String)
+        khA <- openOn "1122" idA rq
+        kiB <- create 1123 idB :: IO (KademliaInstance IdType String)
 
         startRecvProcess khA
 

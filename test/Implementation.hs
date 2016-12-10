@@ -22,13 +22,12 @@ import           Control.Concurrent.STM
 import           Control.Monad
 
 import qualified Data.ByteString.Char8     as C
-import           Data.Default              (def)
 import           Data.Maybe                (fromJust, isJust)
 
 constructNetwork :: IdBunch IdType -> PropertyM IO [KademliaInstance IdType String]
 constructNetwork idBunch = run $ do
     let entryNode = Node (Peer "127.0.0.1" 3123) (head . getIds $ idBunch)
-    instances <- zipWithM (\p i -> K.create p i def) [3123..] (getIds idBunch)
+    instances <- zipWithM K.create [3123..] (getIds idBunch)
                         :: IO [KademliaInstance IdType String]
 
     forM_ (tail instances) (`K.joinNetwork` entryNode)
@@ -54,7 +53,7 @@ idClashCheck idA idB = monadicIO $ do
         entryNode = Node (Peer "127.0.0.1" 1124) idB
 
     joinResult <- run $ do
-        insts@[kiA, _, kiB] <- zipWithM (\p i -> K.create p i def) [1123..] ids
+        insts@[kiA, _, kiB] <- zipWithM K.create [1123..] ids
                             :: IO [KademliaInstance IdType String]
 
         K.joinNetwork kiA $ entryNode
@@ -71,7 +70,7 @@ idClashCheck idA idB = monadicIO $ do
 nodeDownCheck :: Assertion
 nodeDownCheck = do
     let entryNode = Node (Peer "127.0.0.1" 1124) idB
-    inst <- K.create 1123 idA def :: IO (KademliaInstance IdType String)
+    inst <- K.create 1123 idA :: IO (KademliaInstance IdType String)
     joinResult <- K.joinNetwork inst entryNode
     K.close inst
 
