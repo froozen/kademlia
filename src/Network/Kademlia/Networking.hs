@@ -5,6 +5,8 @@ Description : All of the UDP network code
 Network.Kademlia.Networking implements all the UDP network functionality.
 -}
 
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+
 module Network.Kademlia.Networking
     ( openOn
     , openOnL
@@ -16,12 +18,14 @@ module Network.Kademlia.Networking
     , logInfo
     , logError
     , logError'
+    , MsgSizeLimit
     ) where
 
 import           Control.Concurrent
 import           Control.Exception           (SomeException, catch, finally)
 import           Control.Monad               (forM_, forever, unless, void)
 import qualified Data.ByteString             as BS
+import           Data.Default                (Default (..))
 import           Network.Socket              hiding (Closed, recv, recvFrom, send, sendTo)
 import qualified Network.Socket.ByteString   as S
 import           System.IO.Error             (ioError, userError)
@@ -41,20 +45,28 @@ data KademliaHandle i a = KH {
     , logError   :: String -> IO ()
     }
 
+-- | Limit on single (serialized) message size.
+-- Use it to allow messages to fit into datagram packets.
+newtype MsgSizeLimit = MsgSizeLimit Int
+    deriving (Num, Enum, Eq, Ord, Show, Read)
+
+instance Default MsgSizeLimit where
+    def = MsgSizeLimit 1200
+
 logError' :: KademliaHandle i a -> SomeException -> IO ()
 logError' h = logError h . show
 
 openOn
     :: (Show i, Serialize i, Serialize a)
-    => String -> i -> ReplyQueue i a -> IO (KademliaHandle i a)
-openOn port id' rq = openOnL port id' rq (const $ pure ()) (const $ pure ())
+    => String -> i -> MsgSizeLimit -> ReplyQueue i a -> IO (KademliaHandle i a)
+openOn port id' lim rq = openOnL port id' lim rq (const $ pure ()) (const $ pure ())
 
 -- | Open a Kademlia connection on specified port and return a corresponding
 --   KademliaHandle
-openOnL :: (Show i, Serialize i, Serialize a) => String -> i -> ReplyQueue i a
-       -> (String -> IO ()) -> (String -> IO ())
+openOnL :: (Show i, Serialize i, Serialize a) => String -> i -> MsgSizeLimit
+       -> ReplyQueue i a -> (String -> IO ()) -> (String -> IO ())
        -> IO (KademliaHandle i a)
-openOnL port id' rq logInfo logError = withSocketsDo $ do
+openOnL port id' lim rq logInfo logError = withSocketsDo $ do
     -- Get addr to bind to
     (serveraddr:_) <- getAddrInfo
                  (Just (defaultHints {addrFlags = [AI_PASSIVE]}))
@@ -66,7 +78,7 @@ openOnL port id' rq logInfo logError = withSocketsDo $ do
     bind sock (addrAddress serveraddr)
 
     chan <- newChan
-    tId <- forkIO $ sendProcessL sock id' chan logInfo logError
+    tId <- forkIO $ sendProcessL sock lim id' chan logInfo logError
     mvar <- newEmptyMVar
 
     -- Return the handle
@@ -75,12 +87,13 @@ openOnL port id' rq logInfo logError = withSocketsDo $ do
 sendProcessL
     :: (Show i, Serialize i, Serialize a)
     => Socket
+    -> MsgSizeLimit
     -> i
     -> Chan (Command i a, Peer)
     -> (String -> IO ())
     -> (String -> IO ())
     -> IO ()
-sendProcessL sock id chan logInfo logError =
+sendProcessL sock (MsgSizeLimit lim) id chan logInfo logError =
     (withSocketsDo . forever . (`catch` logError') . void $ do
         pair@(cmd, Peer host port) <- readChan chan
 
@@ -90,7 +103,7 @@ sendProcessL sock id chan logInfo logError =
                           (Just . show . fromIntegral $ port)
 
         -- Send the signal
-        case serialize datagramMaxSize id cmd of
+        case serialize lim id cmd of
             Left err   -> logError err
             Right sigs -> forM_ sigs $ \sig -> S.sendTo sock sig (addrAddress peeraddr))
                 -- Close socket on exception (ThreadKilled)
@@ -98,8 +111,6 @@ sendProcessL sock id chan logInfo logError =
   where
     logError' :: SomeException -> IO ()
     logError' e = logError $ "Caught error " ++ show e
-
-    datagramMaxSize = 1200
 
 -- | Dispatch the receiving process
 --

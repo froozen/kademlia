@@ -42,6 +42,7 @@ library
                        Network.Kademlia.Implementation
 
   build-depends:       base >= 4.7 && < 5,
+                       data-default >= 0.7,
                        network >=2.6 && <2.7,
                        mtl >=2.1.3.1,
                        bytestring >=0.10.2 && <0.11,
@@ -70,6 +71,7 @@ test-suite library-test
 
   default-language:    Haskell2010
   build-depends:       base >= 4.7 && < 5,
+                       data-default >= 0.7,
                        network >=2.6 && <2.7,
                        mtl >=2.1.3.1,
                        bytestring >=0.10.2 && <0.11,

@@ -7,21 +7,22 @@ Tests specific to Network.Kademlia.Instance.
 
 module Instance where
 
-import Test.HUnit hiding (assert)
-import Test.QuickCheck
-import Test.QuickCheck.Monadic
+import           Test.HUnit                  hiding (assert)
+import           Test.QuickCheck
+import           Test.QuickCheck.Monadic
 
-import Network.Kademlia.Instance as I
-import Network.Kademlia
-import Network.Kademlia.Networking
-import Network.Kademlia.Types
-import Network.Kademlia.ReplyQueue
-import qualified Data.ByteString.Char8 as C
-import Control.Concurrent.Chan
-import Control.Monad (liftM2)
-import Data.Maybe (isJust, fromJust)
+import           Control.Concurrent.Chan
+import           Control.Monad               (liftM2)
+import qualified Data.ByteString.Char8       as C
+import           Data.Default                (def)
+import           Data.Maybe                  (fromJust, isJust)
+import           Network.Kademlia
+import           Network.Kademlia.Instance   as I
+import           Network.Kademlia.Networking
+import           Network.Kademlia.ReplyQueue
+import           Network.Kademlia.Types
 
-import TestTypes
+import           TestTypes
 
 -- | The default set of peers
 peers :: (Peer, Peer)
@@ -45,8 +46,8 @@ handlesPingCheck = do
 
     rq <- emptyReplyQueue
 
-    khA <- openOn "1122" idA rq :: IO (KademliaHandle IdType String)
-    kiB <- create 1123 idB   :: IO (KademliaInstance IdType String)
+    khA <- openOn "1122" idA def rq :: IO (KademliaHandle IdType String)
+    kiB <- create 1123 idB def   :: IO (KademliaInstance IdType String)
 
     startRecvProcess khA
 
@@ -71,8 +72,8 @@ storeAndFindValueCheck key value = monadicIO $ do
     receivedCmd <- run $ do
         rq <- emptyReplyQueue
 
-        khA <- openOn "1122" idA rq
-        kiB <- create 1123 idB :: IO (KademliaInstance IdType String)
+        khA <- openOn "1122" idA def rq
+        kiB <- create 1123 idB def :: IO (KademliaInstance IdType String)
 
         startRecvProcess khA
 
@@ -109,8 +110,8 @@ trackingKnownPeersCheck = monadicIO $ do
     (node, kiB) <- run $ do
         rq <- emptyReplyQueue :: IO (ReplyQueue IdType String)
 
-        khA <- openOn "1122" idA rq
-        kiB <- create 1123 idB :: IO (KademliaInstance IdType String)
+        khA <- openOn "1122" idA def rq
+        kiB <- create 1123 idB def :: IO (KademliaInstance IdType String)
 
         startRecvProcess khA
 

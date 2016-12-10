@@ -7,19 +7,20 @@ Tests specific to Network.Kademlia.Networking.
 
 module Networking where
 
-import Test.QuickCheck
-import Test.QuickCheck.Monadic
+import           Test.QuickCheck
+import           Test.QuickCheck.Monadic
 
-import Network.Kademlia.Networking
-import Network.Kademlia.Types
-import Network.Kademlia.ReplyQueue
-import Control.Monad
-import Control.Concurrent.Chan
-import Control.Concurrent.STM
-import qualified Data.ByteString.Char8 as C
-import Data.Maybe (isJust)
+import           Control.Concurrent.Chan
+import           Control.Concurrent.STM
+import           Control.Monad
+import qualified Data.ByteString.Char8       as C
+import           Data.Default                (def)
+import           Data.Maybe                  (isJust)
+import           Network.Kademlia.Networking
+import           Network.Kademlia.ReplyQueue
+import           Network.Kademlia.Types
 
-import TestTypes
+import           TestTypes
 
 valueSet :: (Monad m) => PropertyM m (Peer, Peer, IdType, IdType)
 valueSet = do
@@ -40,8 +41,9 @@ sendCheck cmd = monadicIO $ do
         rqA <- emptyReplyQueue
         rqB <- emptyReplyQueue
 
-        khA <- openOn "1122" idA rqA
-        khB <- (openOn "1123" idB rqB :: IO (KademliaHandle IdType String))
+        khA <- openOn "1122" idA def rqA
+        khB <- (openOn "1123" idB def rqB
+                    :: IO (KademliaHandle IdType String))
 
         startRecvProcess khB
 
@@ -70,7 +72,7 @@ expectCheck sig idA = monadicIO $ do
     replySig <- run $ do
         rqA <- emptyReplyQueue
 
-        khA <- openOn "1122" idA rqA
+        khA <- openOn "1122" idA def rqA
 
         startRecvProcess khA
 
