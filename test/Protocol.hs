@@ -39,6 +39,6 @@ lengthCheck s =
             \bs -> counterexample (err bs) $ B.length bs <= partLen
   where
     err bs = "Serialized part of signal is too long: " ++ show (B.length bs) ++ " bytes"
-    partLen = 30
+    partLen = 100
     isReturnNodes (RETURN_NODES _ _) = True
     isReturnNodes _                  = False
