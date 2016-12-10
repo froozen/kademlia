@@ -7,27 +7,27 @@ Tests specific to Network.Kademlia.Implementation.
 
 module Implementation where
 
-import Test.HUnit hiding (assert)
-import Test.QuickCheck
-import Test.QuickCheck.Monadic
-import TestTypes
+import           Test.HUnit                hiding (assert)
+import           Test.QuickCheck
+import           Test.QuickCheck.Monadic
+import           TestTypes
 
-import qualified Network.Kademlia as K
-import qualified Network.Kademlia.Tree as T
-import Network.Kademlia.Types
-import Network.Kademlia.Instance
+import qualified Network.Kademlia          as K
+import           Network.Kademlia.Instance
+import qualified Network.Kademlia.Tree     as T
+import           Network.Kademlia.Types
 
-import Control.Monad
-import Control.Applicative
-import Control.Concurrent.STM
+import           Control.Applicative
+import           Control.Concurrent.STM
+import           Control.Monad
 
-import Data.Maybe (isJust, fromJust)
-import qualified Data.ByteString.Char8 as C
+import qualified Data.ByteString.Char8     as C
+import           Data.Maybe                (fromJust, isJust)
 
 constructNetwork :: IdBunch IdType -> PropertyM IO [KademliaInstance IdType String]
 constructNetwork idBunch = run $ do
-    let entryNode = Node (Peer "127.0.0.1" 1123) (head . getIds $ idBunch)
-    instances <- zipWithM K.create [1123..] (getIds idBunch)
+    let entryNode = Node (Peer "127.0.0.1" 3123) (head . getIds $ idBunch)
+    instances <- zipWithM K.create [3123..] (getIds idBunch)
                         :: IO [KademliaInstance IdType String]
 
     forM_ (tail instances) (`K.joinNetwork` entryNode)

@@ -45,7 +45,7 @@ typeChecks = testGroup "Network.Kademlia.Types" [
 protocolChecks = testGroup "Network.Kademlia.Protocol" [
       QC.testProperty "Protocol Serializing and Parsing works"
          parseCheck
-    , QC.testProperty "Protocol messages are within the max UDP packet size"
+    , QC.testProperty "Protocol messages are cut in pieces of required size"
          lengthCheck
     ]
 
