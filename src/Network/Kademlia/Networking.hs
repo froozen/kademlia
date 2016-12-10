@@ -18,7 +18,6 @@ module Network.Kademlia.Networking
     , logInfo
     , logError
     , logError'
-    , MsgSizeLimit
     ) where
 
 import           Control.Concurrent
@@ -30,6 +29,7 @@ import           Network.Socket              hiding (Closed, recv, recvFrom, sen
 import qualified Network.Socket.ByteString   as S
 import           System.IO.Error             (ioError, userError)
 
+import           Network.Kademlia.Config
 import           Network.Kademlia.Protocol
 import           Network.Kademlia.ReplyQueue hiding (logError, logInfo)
 import           Network.Kademlia.Types
@@ -45,25 +45,19 @@ data KademliaHandle i a = KH {
     , logError   :: String -> IO ()
     }
 
--- | Limit on single (serialized) message size.
--- Use it to allow messages to fit into datagram packets.
-newtype MsgSizeLimit = MsgSizeLimit Int
-    deriving (Num, Enum, Eq, Ord, Show, Read)
-
-instance Default MsgSizeLimit where
-    def = MsgSizeLimit 1200
-
 logError' :: KademliaHandle i a -> SomeException -> IO ()
 logError' h = logError h . show
 
 openOn
     :: (Show i, Serialize i, Serialize a)
-    => String -> i -> MsgSizeLimit -> ReplyQueue i a -> IO (KademliaHandle i a)
-openOn port id' lim rq = openOnL port id' lim rq (const $ pure ()) (const $ pure ())
+    => String -> i -> ReplyQueue i a -> IO (KademliaHandle i a)
+openOn port id' rq = openOnL port id' lim rq (const $ pure ()) (const $ pure ())
+  where
+    lim = msgSizeLimit defaultConfig
 
 -- | Open a Kademlia connection on specified port and return a corresponding
 --   KademliaHandle
-openOnL :: (Show i, Serialize i, Serialize a) => String -> i -> MsgSizeLimit
+openOnL :: (Show i, Serialize i, Serialize a) => String -> i -> Int
        -> ReplyQueue i a -> (String -> IO ()) -> (String -> IO ())
        -> IO (KademliaHandle i a)
 openOnL port id' lim rq logInfo logError = withSocketsDo $ do
@@ -87,13 +81,13 @@ openOnL port id' lim rq logInfo logError = withSocketsDo $ do
 sendProcessL
     :: (Show i, Serialize i, Serialize a)
     => Socket
-    -> MsgSizeLimit
+    -> Int
     -> i
     -> Chan (Command i a, Peer)
     -> (String -> IO ())
     -> (String -> IO ())
     -> IO ()
-sendProcessL sock (MsgSizeLimit lim) id chan logInfo logError =
+sendProcessL sock lim id chan logInfo logError =
     (withSocketsDo . forever . (`catch` logError') . void $ do
         pair@(cmd, Peer host port) <- readChan chan
 

@@ -141,23 +141,22 @@ create
     :: (Show i, Serialize i, Ord i, Serialize a, Eq a, Eq i)
     => Int
     -> i
-    -> MsgSizeLimit
     -> IO (KademliaInstance i a)
-create port id' lim =
-    createL port id' lim defaultConfig (const $ pure ()) (const $ pure ())
+create port id' =
+    createL port id' defaultConfig (const $ pure ()) (const $ pure ())
 
 -- | Same as create, but with logging
 createL
     :: (Show i, Serialize i, Ord i, Serialize a, Eq a, Eq i)
     => Int
     -> i
-    -> MsgSizeLimit
     -> KademliaConfig
     -> (String -> IO ())
     -> (String -> IO ())
     -> IO (KademliaInstance i a)
-createL port id' lim cfg logInfo logError = do
+createL port id' cfg logInfo logError = do
     rq <- emptyReplyQueueL logInfo logError
+    let lim = msgSizeLimit cfg
     h <- openOnL (show port) id' lim rq logInfo logError
     inst <- newInstance id' cfg h
     start inst rq
