@@ -54,7 +54,7 @@ data KademliaInstance i a = KI {
 -- | Representation of the data the KademliaProcess carries
 data KademliaState i a = KS {
       sTree  :: TVar (T.NodeTree i)
-    , values :: TVar (M.Map i a)
+    , values :: Maybe (TVar (M.Map i a))
     }
 
 -- | Create a new KademliaInstance from an Id and a KademliaHandle
@@ -62,7 +62,7 @@ newInstance :: (Serialize i) =>
                i -> KademliaConfig -> KademliaHandle i a -> IO (KademliaInstance i a)
 newInstance id cfg handle = do
     tree <- atomically . newTVar . T.create $ id
-    values <- atomically . newTVar $ M.empty
+    values <- if storeValues cfg then Just <$> (atomically . newTVar $ M.empty) else pure Nothing
     threads <- atomically . newTVar $ M.empty
     return $ KI handle (KS tree values) threads cfg
 
@@ -94,19 +94,22 @@ dumpPeers (KI _ (KS sTree _) _ _) = atomically $ do
 
 -- | Insert a value into the store
 insertValue :: (Ord i) => i -> a -> KademliaInstance i a -> IO ()
-insertValue key value (KI _ (KS _ values) _ _) = atomically $ do
+insertValue key value (KI _ (KS _ Nothing) _ _) = return ()
+insertValue key value (KI _ (KS _ (Just values)) _ _) = atomically $ do
     vals <- readTVar values
     writeTVar values $ M.insert key value vals
 
 -- | Delete a value from the store
 deleteValue :: (Ord i) => i -> KademliaInstance i a -> IO ()
-deleteValue key (KI _ (KS _ values) _ _) = atomically $ do
+deleteValue key (KI _ (KS _ Nothing) _ _) = return ()
+deleteValue key (KI _ (KS _ (Just values)) _ _) = atomically $ do
     vals <- readTVar values
     writeTVar values $ M.delete key vals
 
 -- | Lookup a value in the store
 lookupValue :: (Ord i) => i -> KademliaInstance i a -> IO (Maybe a)
-lookupValue key (KI _ (KS _ values) _ _) = atomically $ do
+lookupValue key (KI _ (KS _ Nothing) _ _) = pure Nothing
+lookupValue key (KI _ (KS _ (Just values)) _ _) = atomically $ do
     vals <- readTVar values
     return . M.lookup key $ vals
 
@@ -166,7 +169,7 @@ receivingProcess inst@(KI h _ _ _) rq replyChan registerChan = forever . (`catch
 
                 -- This node can be assumed to be closest to the new node
                 when (ownId == closestId) $ do
-                    storedValues <- toList <$> retrieve values
+                    storedValues <- toList <$> retrieveMaybe values
                     let h = handle inst
                         p = peer node
                     -- Store all stored values in the new node
@@ -186,7 +189,9 @@ receivingProcess inst@(KI h _ _ _) rq replyChan registerChan = forever . (`catch
         _ -> return ()
 
     dispatch reply rq
-    where retrieve f = atomically . readTVar . f . state $ inst
+    where
+        retrieve f = atomically . readTVar . f . state $ inst
+        retrieveMaybe f = maybe (pure mempty) (atomically . readTVar) . f . state $ inst
 
 
 -- | The actual process running in the background
@@ -238,10 +243,14 @@ spreadValueProcess :: (Serialize i, Serialize a, Eq i) => KademliaInstance i a
 spreadValueProcess (KI h (KS sTree sValues) _ cfg) = forever . (`catch` logError' h) . void $ do
     threadDelay (storeValueTime cfg)
 
-    values <- atomically . readTVar $ sValues
-    tree <- atomically . readTVar $ sTree
+    case sValues of
+        Nothing        -> return ()
+        Just valueVars -> do
+            values <- atomically . readTVar $ valueVars
+            tree <- atomically . readTVar $ sTree
 
-    mapMWithKey (sendRequests tree) $ values
+            mapMWithKey (sendRequests tree) $ values
+            return ()
 
     where
           sendRequests tree key val = do

@@ -13,6 +13,7 @@ data KademliaConfig = KademliaConfig {
                             -- also known as α in kademlia paper
     , msgSizeLimit   :: Int -- upper bound on size of message transfered through
                             -- network; exceeding messages would be splitted
+    , storeValues    :: Bool -- when this is False, we don't store anything in this node
     }
 
 defaultConfig = KademliaConfig
@@ -21,4 +22,5 @@ defaultConfig = KademliaConfig
     , pingTime       = minute 5
     , nbLookupNodes  = 3
     , msgSizeLimit   = 1200
+    , storeValues    = True
     }

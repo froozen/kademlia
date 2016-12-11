@@ -90,6 +90,8 @@ replyQueueChecks = testGroup "Network.Kademlia.ReplyQueue" [
 implementationChecks = testGroup "Network.Kademlia.Implementation" [
       QC.testProperty "Joining the Network works"
          joinCheck
+    , QC.testProperty "Joining the Network full works"
+         joinFullCheck
     , QC.testProperty "ID clashes are detected"
          idClashCheck
     , QC.testProperty "Storing and looking up values works"
