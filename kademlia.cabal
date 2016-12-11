@@ -1,7 +1,7 @@
 name:                kademlia
-version:             1.1.0.0
-homepage:            https://github.com/froozen/kademlia
-bug-reports:         https://github.com/froozen/kademlia/issues
+version:             1.1.0.1
+homepage:            https://github.com/serokell/kademlia
+bug-reports:         https://github.com/serokell/kademlia/issues
 synopsis:            An implementation of the Kademlia DHT Protocol
 description:
     .
@@ -20,32 +20,32 @@ description:
 license:             BSD3
 license-file:        LICENSE
 author:              fro_ozen <fro_ozen@gmx.de>
-maintainer:          fro_ozen <fro_ozen@gmx.de>
+maintainer:          fro_ozen <fro_ozen@gmx.de>, 2016 Serokell <hi@serokell.io>
 category:            Network
-
 build-type:          Simple
 cabal-version:       >=1.10
 
 source-repository head
     type:       git
-    location:   https://github.com/froozen/kademlia.git
+    location:   https://github.com/serokell/kademlia.git
 
 library
   exposed-modules:     Network.Kademlia
-
-  other-modules:       Network.Kademlia.Networking, Network.Kademlia.Types,
-                       Network.Kademlia.Protocol, Network.Kademlia.Instance,
-                       Network.Kademlia.Protocol.Parsing, Network.Kademlia.Tree,
-                       Network.Kademlia.ReplyQueue,
-                       Network.Kademlia.Utils,
-                       Network.Kademlia.Config,
                        Network.Kademlia.HashNodeId,
                        Network.Kademlia.Implementation
+                       Network.Kademlia.Instance
+                       Network.Kademlia.Networking
+                       Network.Kademlia.Protocol
+                       Network.Kademlia.Protocol.Parsing
+                       Network.Kademlia.ReplyQueue
+                       Network.Kademlia.Tree
+                       Network.Kademlia.Types
+                       Network.Kademlia.Utils
 
   build-depends:       base                >= 4.7 && < 5
                      , bytestring          >= 0.10.2 && < 0.11
                      , containers          >= 0.5.5.1
-                     , data-default >= 0.7
+                     , data-default        >= 0.7
                      , errors
                      , MonadRandom
                      , mtl                 >= 2.1.3.1
@@ -59,29 +59,35 @@ library
 
   hs-source-dirs:      src
   default-language:    Haskell2010
+  ghc-options:         -Wall -fno-warn-orphans -O2
+
+  default-extensions:   DeriveDataTypeable
+                        DeriveGeneric
+                        GeneralizedNewtypeDeriving
+                        OverloadedStrings
+                        RecordWildCards
+                        TypeApplications
 
 test-suite library-test
   type:                exitcode-stdio-1.0
+  hs-source-dirs:      test
   main-is:             Test.hs
-  hs-source-dirs:      test, src
-  other-modules:       Protocol, Networking, TestTypes, Types, Tree, Instance,
-                       ReplyQueue, Implementation,
-                       Network.Kademlia.Networking, Network.Kademlia.Types,
-                       Network.Kademlia.Protocol, Network.Kademlia.Instance,
-                       Network.Kademlia.Protocol.Parsing, Network.Kademlia.Tree,
-                       Network.Kademlia.ReplyQueue,
-                       Network.Kademlia.Utils,
-                       Network.Kademlia.Config,
-                       Network.Kademlia.Implementation,
-                       Network.Kademlia
+  other-modules:       Protocol
+                       Networking
+                       TestTypes
+                       Types
+                       Tree
+                       Instance
+                       ReplyQueue
+                       Implementation
 
-  default-language:    Haskell2010
   build-depends:       base                >= 4.7 && < 5
                      , bytestring          >= 0.10.2 && < 0.11
                      , containers          >= 0.5.5.1
                      , data-default        >= 0.7
                      , errors
                      , HUnit               >= 1.2.5.2
+                     , kademlia
                      , MonadRandom
                      , mtl                 >= 2.1.3.1
                      , network             >= 2.6 && < 2.7
@@ -94,3 +100,13 @@ test-suite library-test
                      , tasty-quickcheck    >= 0.8.3.1
                      , transformers        >= 0.3
                      , transformers-compat >= 0.3.3
+
+  default-language:    Haskell2010
+  ghc-options:         -Wall -fno-warn-orphans -O2
+
+  default-extensions:   DeriveDataTypeable
+                        DeriveGeneric
+                        GeneralizedNewtypeDeriving
+                        OverloadedStrings
+                        RecordWildCards
+                        TypeApplications

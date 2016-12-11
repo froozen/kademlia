@@ -8,23 +8,30 @@ the way it's supposed to.
 
 module Main where
 
-import           Test.Tasty
+import           Test.Tasty            (TestTree, defaultMain, testGroup)
 import           Test.Tasty.HUnit      as HU
 import           Test.Tasty.QuickCheck as QC
 
-import           Implementation
-import           Instance
-import           Networking
-import           Protocol
-import           ReplyQueue
-import           Tree
-import           Types
+import           Implementation        (idClashCheck, joinCheck, joinFullCheck,
+                                        lookupNodesCheck, nodeDownCheck,
+                                        storeAndLookupCheck)
+import           Instance              (handlesPingCheck, storeAndFindValueCheck,
+                                        trackingKnownPeersCheck)
+import           Networking            (expectCheck, sendCheck)
+import           Protocol              (lengthCheck, parseCheck)
+import           ReplyQueue            (removedCheck, repliesCheck)
+import           Tree                  (bucketSizeCheck, deleteCheck, findClosestCheck,
+                                        insertCheck, pickupNotClosestDifferentCheck,
+                                        refreshCheck, splitCheck)
+import           Types                 (fromByteStructCheck, toByteStructCheck)
 
+main :: IO ()
 main = defaultMain tests
 
 tests :: TestTree
 tests = testGroup "Tests" [quickCheckTests, hUnitTests]
 
+quickCheckTests :: TestTree
 quickCheckTests = testGroup "QuickCheck" [
       typeChecks
     , protocolChecks
@@ -35,6 +42,7 @@ quickCheckTests = testGroup "QuickCheck" [
     , implementationChecks
     ]
 
+typeChecks :: TestTree
 typeChecks = testGroup "Network.Kademlia.Types" [
       QC.testProperty "ByteString to ByteStruct conversion works"
          toByteStructCheck
@@ -42,6 +50,7 @@ typeChecks = testGroup "Network.Kademlia.Types" [
          fromByteStructCheck
     ]
 
+protocolChecks :: TestTree
 protocolChecks = testGroup "Network.Kademlia.Protocol" [
       QC.testProperty "Protocol Serializing and Parsing works"
          parseCheck
@@ -49,6 +58,7 @@ protocolChecks = testGroup "Network.Kademlia.Protocol" [
          lengthCheck
     ]
 
+networkingChecks :: TestTree
 networkingChecks = testGroup "Network.Kademlia.Networking" [
       QC.testProperty "Sending and Receiving works"
          sendCheck
@@ -56,6 +66,7 @@ networkingChecks = testGroup "Network.Kademlia.Networking" [
          expectCheck
     ]
 
+treeChecks :: TestTree
 treeChecks = testGroup "Network.Kademlia.Tree" [
       QC.testProperty "Inserting into the Tree works"
          insertCheck
@@ -73,6 +84,7 @@ treeChecks = testGroup "Network.Kademlia.Tree" [
          pickupNotClosestDifferentCheck
     ]
 
+instanceChecks :: TestTree
 instanceChecks = testGroup "Network.Kademlia.Instance" [
       QC.testProperty "Storing and Retrieving values works"
          storeAndFindValueCheck
@@ -80,6 +92,7 @@ instanceChecks = testGroup "Network.Kademlia.Instance" [
          trackingKnownPeersCheck
     ]
 
+replyQueueChecks :: TestTree
 replyQueueChecks = testGroup "Network.Kademlia.ReplyQueue" [
       QC.testProperty "Registering replies works"
           repliesCheck
@@ -87,6 +100,7 @@ replyQueueChecks = testGroup "Network.Kademlia.ReplyQueue" [
          removedCheck
     ]
 
+implementationChecks :: TestTree
 implementationChecks = testGroup "Network.Kademlia.Implementation" [
       QC.testProperty "Joining the Network works"
          joinCheck
@@ -100,16 +114,19 @@ implementationChecks = testGroup "Network.Kademlia.Implementation" [
         lookupNodesCheck
     ]
 
+hUnitTests :: TestTree
 hUnitTests = testGroup "HUnit" [
       instanceCases
     , implementationCases
     ]
 
+instanceCases :: TestTree
 instanceCases = testGroup "Network.Kademlia.Instance" [
       HU.testCase "PINGs are automaticly handled"
          handlesPingCheck
     ]
 
+implementationCases :: TestTree
 implementationCases = testGroup "Network.Kademlia.Implementation" [
       HU.testCase "Trying to join over an offline Node is detected"
          nodeDownCheck
