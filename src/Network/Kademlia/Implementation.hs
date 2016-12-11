@@ -143,7 +143,9 @@ joinNetwork inst node = ownId >>= runLookup go inst
 
           -- Check wether the own id was encountered. If so, return a IDClash
           -- error, otherwise, continue the lookup.
+          -- Also insert all returned nodes to our bucket (see [CSL-258])
           checkSignal (Signal _ (RETURN_NODES _ nodes)) = do
+                forM_ nodes $ liftIO . insertNode inst
                 tId <- gets targetId
                 case find (\node -> nodeId node == tId) nodes of
                     Just _ -> return IDClash
@@ -176,8 +178,10 @@ lookupNode inst id = runLookup go inst id
     -- Check wether the Node we are looking for was found. There are two cases after receiving:
     -- * If we didn't found node then continue lookup
     -- * otherwise: return found node
+    -- Also insert all returned nodes to our tree (see [CSL-258])
     checkSignal :: Signal i v -> LookupM i a (Maybe (Node i))
     checkSignal (Signal _ (RETURN_NODES _ nodes)) = do
+        forM_ nodes $ liftIO . insertNode inst
         let targetNode = find ((== id) . nodeId) nodes
         case targetNode of
             Nothing  -> continueLookup nodes sendS continue end
