@@ -8,17 +8,17 @@ the way it's supposed to.
 
 module Main where
 
-import Test.Tasty
-import Test.Tasty.QuickCheck as QC
-import Test.Tasty.HUnit as HU
+import           Test.Tasty
+import           Test.Tasty.HUnit      as HU
+import           Test.Tasty.QuickCheck as QC
 
-import Types
-import Protocol
-import Networking
-import Tree
-import Instance
-import ReplyQueue
-import Implementation
+import           Implementation
+import           Instance
+import           Networking
+import           Protocol
+import           ReplyQueue
+import           Tree
+import           Types
 
 main = defaultMain tests
 
@@ -45,7 +45,7 @@ typeChecks = testGroup "Network.Kademlia.Types" [
 protocolChecks = testGroup "Network.Kademlia.Protocol" [
       QC.testProperty "Protocol Serializing and Parsing works"
          parseCheck
-    , QC.testProperty "Protocol messages are within the max UDP packet size"
+    , QC.testProperty "Protocol messages are cut in pieces of required size"
          lengthCheck
     ]
 
@@ -69,6 +69,8 @@ treeChecks = testGroup "Network.Kademlia.Tree" [
          refreshCheck
     , QC.testProperty "Finding closest works"
          findClosestCheck
+    , QC.testProperty "Not closest doesn't contain closest"
+         pickupNotClosestDifferentCheck
     ]
 
 instanceChecks = testGroup "Network.Kademlia.Instance" [
@@ -88,6 +90,8 @@ replyQueueChecks = testGroup "Network.Kademlia.ReplyQueue" [
 implementationChecks = testGroup "Network.Kademlia.Implementation" [
       QC.testProperty "Joining the Network works"
          joinCheck
+    , QC.testProperty "Joining the Network full works"
+         joinFullCheck
     , QC.testProperty "ID clashes are detected"
          idClashCheck
     , QC.testProperty "Storing and looking up values works"

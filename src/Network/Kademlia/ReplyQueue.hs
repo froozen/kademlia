@@ -14,19 +14,19 @@ module Network.Kademlia.ReplyQueue
     , Reply(..)
     , ReplyQueue(..)
     , emptyReplyQueue
+    , emptyReplyQueueL
     , register
     , dispatch
     , flush
     ) where
 
-import Control.Concurrent
-import Control.Concurrent.STM
-import Control.Concurrent.Chan
-import Control.Monad (liftM3, forM_)
-import Control.Monad.Trans.Maybe
-import Data.List (find, delete)
+import           Control.Concurrent     hiding (threadDelay)
+import           Control.Concurrent.STM
+import           Control.Monad          (forM_)
+import           Data.List              (delete, find)
 
-import Network.Kademlia.Types
+import           Network.Kademlia.Types
+import           Network.Kademlia.Utils
 
 -- | The different types a replied signal could possibly have.
 --
@@ -57,7 +57,7 @@ toRegistration (Answer sig)  = case rType . command $ sig of
           rType  PONG               = Just  R_PONG
           rType (RETURN_VALUE id _) = Just (R_RETURN_VALUE id)
           rType (RETURN_NODES id _) = Just (R_RETURN_NODES id)
-          rType _ = Nothing
+          rType _                   = Nothing
 
 -- | Compare wether two ReplyRegistrations match
 matchRegistrations :: (Eq i) => ReplyRegistration i -> ReplyRegistration i -> Bool
@@ -72,14 +72,23 @@ data Reply i a = Answer (Signal i a)
 
 -- | The actual type representing a ReplyQueue
 data ReplyQueue i a = RQ {
-      queue :: (TVar [(ReplyRegistration i, Chan (Reply i a), ThreadId)])
+      queue       :: (TVar [(ReplyRegistration i, Chan (Reply i a), ThreadId)])
     , timeoutChan :: Chan (Reply i a)
     , defaultChan :: Chan (Reply i a)
+    , logInfo     :: String -> IO ()
+    , logError    :: String -> IO ()
     }
+
 
 -- | Create a new ReplyQueue
 emptyReplyQueue :: IO (ReplyQueue i a)
-emptyReplyQueue = liftM3 RQ (atomically . newTVar $ []) newChan $ newChan
+emptyReplyQueue = emptyReplyQueueL (const $ pure ()) (const $ pure ())
+
+-- | Create a new ReplyQueue with loggers
+emptyReplyQueueL :: (String -> IO ()) -> (String -> IO ()) -> IO (ReplyQueue i a)
+emptyReplyQueueL logInfo logError =
+    RQ <$> (atomically . newTVar $ []) <*> newChan <*> newChan <*> pure logInfo <*>
+    pure logError
 
 -- | Register a channel as handler for a reply
 register :: (Eq i) => ReplyRegistration i -> ReplyQueue i a -> Chan (Reply i a)
@@ -93,7 +102,7 @@ register reg rq chan = do
 timeoutThread :: (Eq i) => ReplyRegistration i -> ReplyQueue i a -> IO ThreadId
 timeoutThread reg rq = forkIO $ do
     -- Wait 5 seconds
-    threadDelay 5000000
+    threadDelay 5
 
     -- Remove the ReplyRegistration from the ReplyQueue
     myTId <- myThreadId
@@ -103,7 +112,7 @@ timeoutThread reg rq = forkIO $ do
 
 -- | Dispatch a reply over a registered handler. If there is no handler,
 --   dispatch it to the default one.
-dispatch :: (Eq i) => Reply i a -> ReplyQueue i a -> IO ()
+dispatch :: (Show i, Eq i) => Reply i a -> ReplyQueue i a -> IO ()
 dispatch reply rq = do
     -- Try to find a registration matching the reply
     result <- atomically $ do
@@ -117,9 +126,9 @@ dispatch reply rq = do
 
                 Nothing -> return Nothing
             Nothing -> return Nothing
-
     case result of
-        Just (_, chan, tId) -> do
+        Just (reg, chan, tId) -> do
+            logInfo rq (" -- dispatch reply " ++ show reply ++ ": in queue, " ++ show reg)
             -- Kill the timeout thread
             killThread tId
 
@@ -127,7 +136,9 @@ dispatch reply rq = do
             writeChan chan reply
 
         -- Send the reply over the default channel
-        Nothing -> writeChan (defaultChan rq) reply
+        Nothing -> do
+          logInfo rq (" -- dispatch reply " ++ show reply ++ ": not in queue")
+          writeChan (defaultChan rq) reply
 
     where matches regA (regB, _, _) = matchRegistrations regA regB
 

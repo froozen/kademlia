@@ -7,21 +7,22 @@ Tests specific to Network.Kademlia.Instance.
 
 module Instance where
 
-import Test.HUnit hiding (assert)
-import Test.QuickCheck
-import Test.QuickCheck.Monadic
+import           Test.HUnit                  hiding (assert)
+import           Test.QuickCheck
+import           Test.QuickCheck.Monadic
 
-import Network.Kademlia.Instance as I
-import Network.Kademlia
-import Network.Kademlia.Networking
-import Network.Kademlia.Types
-import Network.Kademlia.ReplyQueue
-import qualified Data.ByteString.Char8 as C
-import Control.Concurrent.Chan
-import Control.Monad (liftM2)
-import Data.Maybe (isJust, fromJust)
+import           Control.Concurrent.Chan
+import           Control.Monad               (liftM2)
+import qualified Data.ByteString.Char8       as C
+import           Data.Default                (def)
+import           Data.Maybe                  (fromJust, isJust)
+import           Network.Kademlia
+import           Network.Kademlia.Instance   as I
+import           Network.Kademlia.Networking
+import           Network.Kademlia.ReplyQueue
+import           Network.Kademlia.Types
 
-import TestTypes
+import           TestTypes
 
 -- | The default set of peers
 peers :: (Peer, Peer)

@@ -1,3 +1,5 @@
+{-# LANGUAGE ScopedTypeVariables #-}
+
 {-|
 Module      : Network.Kademlia.Implementation
 Description : The details of the lookup algorithm
@@ -14,19 +16,19 @@ module Network.Kademlia.Implementation
     , Network.Kademlia.Implementation.lookupNode
     ) where
 
-import Network.Kademlia.Networking
-import Network.Kademlia.Instance
-import qualified Network.Kademlia.Tree as T
-import Network.Kademlia.Types
-import Network.Kademlia.ReplyQueue
-import Prelude hiding (lookup)
-import Control.Monad (forM_, unless, when)
-import Control.Monad.Trans.State hiding (state)
-import Control.Concurrent.Chan
-import Control.Concurrent.STM
-import Control.Monad.IO.Class (liftIO)
-import Data.List (delete, find, (\\))
-import Data.Maybe (isJust, fromJust)
+import           Control.Concurrent.Chan
+import           Control.Concurrent.STM
+import           Control.Monad               (forM_, unless, when)
+import           Control.Monad.IO.Class      (liftIO)
+import           Control.Monad.Trans.State   hiding (state)
+import           Data.List                   (delete, find, (\\))
+import           Data.Maybe                  (fromJust, isJust)
+import           Network.Kademlia.Instance
+import           Network.Kademlia.Networking
+import           Network.Kademlia.ReplyQueue hiding (logError, logInfo)
+import qualified Network.Kademlia.Tree       as T
+import           Network.Kademlia.Types
+import           Prelude                     hiding (lookup)
 
 
 -- | Lookup the value corresponding to a key in the DHT and return it, together
@@ -34,7 +36,7 @@ import Data.Maybe (isJust, fromJust)
 lookup :: (Serialize i, Serialize a, Eq i, Ord i) => KademliaInstance i a -> i
        -> IO (Maybe (a, Node i))
 lookup inst id = runLookup go inst id
-    where go = startLookup sendS cancel checkSignal
+    where go = startLookup (config inst) sendS cancel checkSignal
 
           -- Return Nothing on lookup failure
           cancel = return Nothing
@@ -89,7 +91,7 @@ lookup inst id = runLookup go inst id
 store :: (Serialize i, Serialize a, Eq i, Ord i) =>
          KademliaInstance i a -> i -> a -> IO ()
 store inst key val = runLookup go inst key
-    where go = startLookup sendS end checkSignal
+    where go = startLookup (config inst) sendS end checkSignal
 
           -- Always add the nodes into the loop and continue the lookup
           checkSignal (Signal _ (RETURN_NODES _ nodes)) =
@@ -141,11 +143,13 @@ joinNetwork inst node = ownId >>= runLookup go inst
 
           -- Check wether the own id was encountered. If so, return a IDClash
           -- error, otherwise, continue the lookup.
+          -- Also insert all returned nodes to our bucket (see [CSL-258])
           checkSignal (Signal _ (RETURN_NODES _ nodes)) = do
+                forM_ nodes $ liftIO . insertNode inst
                 tId <- gets targetId
                 case find (\node -> nodeId node == tId) nodes of
                     Just _ -> return IDClash
-                    _ -> continueLookup nodes sendS continue finish
+                    _      -> continueLookup nodes sendS continue finish
 
           -- Continuing always means waiting for the next signal
           continue = waitForReply finish checkSignal
@@ -157,36 +161,49 @@ joinNetwork inst node = ownId >>= runLookup go inst
           finish = return JoinSucces
 
 -- | Lookup the Node corresponding to the supplied ID
-lookupNode :: (Serialize i, Serialize a, Eq i, Ord i) => KademliaInstance i a -> i
+lookupNode :: forall i a .
+              (Serialize i, Serialize a, Eq i, Ord i)
+           => KademliaInstance i a
+           -> i
            -> IO (Maybe (Node i))
 lookupNode inst id = runLookup go inst id
-    where go = startLookup sendS end checkSignal
+  where
+    go :: LookupM i a (Maybe (Node i))
+    go = startLookup (config inst) sendS end checkSignal
 
-          -- Return Nothing on lookup failure
-          end = return Nothing
+    -- Return empty list on lookup failure
+    end :: LookupM i a (Maybe (Node i))
+    end = return Nothing
 
-          -- Check wether the Node we are looking for was found. If so, return
-          -- it, otherwise continue the lookup.
-          checkSignal (Signal _ (RETURN_NODES _ nodes)) =
-                case find (\(Node _ nId) -> nId == id) nodes of
-                    Just node -> return . Just $ node
-                    _ -> continueLookup nodes sendS continue end
+    -- Check wether the Node we are looking for was found. There are two cases after receiving:
+    -- * If we didn't found node then continue lookup
+    -- * otherwise: return found node
+    -- Also insert all returned nodes to our tree (see [CSL-258])
+    checkSignal :: Signal i v -> LookupM i a (Maybe (Node i))
+    checkSignal (Signal _ (RETURN_NODES _ nodes)) = do
+        forM_ nodes $ liftIO . insertNode inst
+        let targetNode = find ((== id) . nodeId) nodes
+        case targetNode of
+            Nothing  -> continueLookup nodes sendS continue end
+            justNode -> return justNode
+    checkSignal _ = end  -- maybe it should be `panic` if we get some other return result
 
-          -- Continuing always means waiting for the next signal
-          continue = waitForReply end checkSignal
+    -- Continuing always means waiting for the next signal
+    continue :: LookupM i a (Maybe (Node i))
+    continue = waitForReply end checkSignal
 
-          -- Send a FIND_NODE command looking for the Node corresponding to the
-          -- id
-          sendS = sendSignal (FIND_NODE id)
+    -- Send a FIND_NODE command looking for the Node corresponding to the id
+    sendS :: (Serialize i, Serialize a, Eq i) => Node i -> LookupM i a ()
+    sendS = sendSignal (FIND_NODE id)
 
 -- | The state of a lookup
 data LookupState i a = LookupState {
-      inst :: KademliaInstance i a
-    , targetId :: i
-    , replyChan :: Chan (Reply i a)
-    , known :: [Node i]
-    , pending :: [Node i]
-    , polled :: [Node i]
+      inst      :: !(KademliaInstance i a)
+    , targetId  :: !i
+    , replyChan :: !(Chan (Reply i a))
+    , known     :: ![Node i]
+    , pending   :: ![Node i]
+    , polled    :: ![Node i]
     }
 
 -- | MonadTransformer context of a lookup
@@ -201,16 +218,18 @@ runLookup lookup inst id = do
     evalStateT lookup state
 
 -- The initial phase of the normal kademlia lookup operation
-startLookup :: (Serialize i, Serialize a, Eq i, Ord i) => (Node i -> LookupM i a ())
+startLookup :: (Serialize i, Serialize a, Eq i, Ord i)
+            => KademliaConfig
+            -> (Node i -> LookupM i a ())
             -> LookupM i a b -> (Signal i a -> LookupM i a b) -> LookupM i a b
-startLookup sendSignal cancel onSignal = do
+startLookup cfg sendSignal cancel onSignal = do
     inst <- gets inst
     tree <- liftIO . atomically . readTVar . sTree . state $ inst
     chan <- gets replyChan
-    id <- gets targetId
+    id   <- gets targetId
 
     -- Find the three nodes closest to the supplied id
-    case T.findClosest tree id 3 of
+    case T.findClosest tree id (nbLookupNodes cfg) of
             [] -> cancel
             closest -> do
                 -- Send a signal to each of the Nodes
@@ -224,8 +243,10 @@ startLookup sendSignal cancel onSignal = do
                 waitForReply cancel onSignal
 
 -- Wait for the next reply and handle it appropriately
-waitForReply :: (Serialize i, Serialize a, Ord i) => LookupM i a b
-             -> (Signal i a -> LookupM i a b) -> LookupM i a b
+waitForReply :: (Serialize i, Serialize a, Ord i)
+             => LookupM i a b
+             -> (Signal i a -> LookupM i a b)
+             -> LookupM i a b
 waitForReply cancel onSignal = do
     chan <- gets replyChan
     sPending <- gets pending
