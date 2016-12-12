@@ -55,7 +55,6 @@ library
                      , stm                 >= 2.4.3
                      , transformers        >= 0.3
                      , transformers-compat >= 0.3.3
-                     , binary
                      , cryptonite
 
   hs-source-dirs:      src
