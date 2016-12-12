@@ -5,19 +5,27 @@ Description : Tests for Network.Kademlia.Tree
 Tests specific to Network.Kademlia.Tree.
 -}
 
-module Tree where
+module Tree
+       ( bucketSizeCheck
+       , deleteCheck
+       , findClosestCheck
+       , insertCheck
+       , lookupCheck
+       , pickupNotClosestDifferentCheck
+       , refreshCheck
+       , splitCheck
+       ) where
 
 
-import           Control.Monad          (liftM)
 import           Data.List              (sortBy)
 import           Data.Maybe             (isJust)
 import           System.Random          (mkStdGen)
-import           Test.QuickCheck
+import           Test.QuickCheck        (Property, conjoin, counterexample, property)
 
 import qualified Network.Kademlia.Tree  as T
-import           Network.Kademlia.Types
+import           Network.Kademlia.Types (Node (..), Serialize (..), distance)
 
-import           TestTypes
+import           TestTypes              (IdType (..), NodeBunch (..))
 
 -- | Helper method for lookup checking
 lookupCheck :: (Serialize i, Eq i) => T.NodeTree i -> Node i -> Bool
@@ -25,19 +33,19 @@ lookupCheck tree node = T.lookup tree (nodeId node) == Just node
 
 -- | Check wether an inserted Node is retrievable
 insertCheck :: IdType -> Node IdType -> Bool
-insertCheck id node = lookupCheck tree node
-    where tree = T.insert (T.create id) node
+insertCheck nid node = lookupCheck tree node
+    where tree = T.insert (T.create nid) node
 
 -- | Make sure a deleted Node can't be retrieved anymore
 deleteCheck :: IdType -> Node IdType -> Bool
-deleteCheck id node = not . lookupCheck tree $ node
+deleteCheck nid node = not . lookupCheck tree $ node
     where tree = T.delete origin . nodeId $ node
-          origin = T.insert (T.create id) node
+          origin = T.insert (T.create nid) node
 
 withTree :: (T.NodeTree IdType -> [Node IdType] -> a) ->
             NodeBunch IdType -> IdType -> a
-withTree f bunch id = f tree $ nodes bunch
-    where tree = foldr (flip T.insert) (T.create id) $ nodes bunch
+withTree f bunch nid = f tree $ nodes bunch
+    where tree = foldr (flip T.insert) (T.create nid) $ nodes bunch
 
 splitCheck :: NodeBunch IdType -> IdType -> Property
 splitCheck = withTree f
@@ -71,20 +79,20 @@ refreshCheck = withTree f
 -- | Make sure findClosest returns the Node with the closest Ids of all nodes
 --   in the tree.
 findClosestCheck :: IdType -> NodeBunch IdType -> IdType -> Property
-findClosestCheck id = withTree f
+findClosestCheck nid = withTree f
     where f tree nodes = conjoin . foldr g [] $ manualClosest
            where g node props = counterexample (text node) (prop node):props
-                  where prop node = node `elem` treeClosest
-                        text node = "Failed to find: " ++ show node
+                  where prop node' = node' `elem` treeClosest
+                        text node' = "Failed to find: " ++ show node'
 
-                 treeClosest = T.findClosest tree id 7
+                 treeClosest = T.findClosest tree nid 7
 
                  contained = filter contains nodes
                  contains node = isJust . T.lookup tree . nodeId $ node
 
                  manualClosest = map fst . take 7 . sort $ packed
                  packed = zip contained $ map distanceF contained
-                 distanceF = distance id . nodeId
+                 distanceF = distance nid . nodeId
                  sort = sortBy $ \(_, a) (_, b) -> compare a b
 
 -- | Check that 'T.pickupNotClosest' doesn't return closest nodes.

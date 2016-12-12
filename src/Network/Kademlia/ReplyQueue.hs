@@ -20,13 +20,14 @@ module Network.Kademlia.ReplyQueue
     , flush
     ) where
 
-import           Control.Concurrent     hiding (threadDelay)
-import           Control.Concurrent.STM
+import           Control.Concurrent     (Chan, ThreadId, forkIO, killThread, newChan,
+                                         writeChan)
+import           Control.Concurrent.STM (TVar, atomically, newTVar, readTVar, writeTVar)
 import           Control.Monad          (forM_)
 import           Data.List              (delete, find)
 
-import           Network.Kademlia.Types
-import           Network.Kademlia.Utils
+import           Network.Kademlia.Types (Command (..), Node (..), Signal (..))
+import           Network.Kademlia.Utils (threadDelay)
 
 -- | The different types a replied signal could possibly have.
 --
@@ -50,14 +51,14 @@ toRegistration Closed        = Nothing
 toRegistration (Timeout reg) = Just reg
 toRegistration (Answer sig)  = case rType . command $ sig of
             Nothing -> Nothing
-            Just rt -> Just (RR [rt] (origin sig))
-    where origin sig = nodeId . source $ sig
+            Just rt -> Just (RR [rt] origin)
+    where origin = nodeId $ source sig
 
           rType :: Command i a -> Maybe (ReplyType i)
-          rType  PONG               = Just  R_PONG
-          rType (RETURN_VALUE id _) = Just (R_RETURN_VALUE id)
-          rType (RETURN_NODES id _) = Just (R_RETURN_NODES id)
-          rType _                   = Nothing
+          rType  PONG                = Just  R_PONG
+          rType (RETURN_VALUE nid _) = Just (R_RETURN_VALUE nid)
+          rType (RETURN_NODES nid _) = Just (R_RETURN_NODES nid)
+          rType _                    = Nothing
 
 -- | Compare wether two ReplyRegistrations match
 matchRegistrations :: (Eq i) => ReplyRegistration i -> ReplyRegistration i -> Bool
@@ -91,21 +92,25 @@ emptyReplyQueueL logInfo logError =
     pure logError
 
 -- | Register a channel as handler for a reply
-register :: (Eq i) => ReplyRegistration i -> ReplyQueue i a -> Chan (Reply i a)
-         -> IO ()
+register
+    :: ReplyRegistration i
+    -> ReplyQueue i a
+    -> Chan (Reply i a)
+    -> IO ()
 register reg rq chan = do
     tId <- timeoutThread reg rq
     atomically $ do
         rQueue <- readTVar . queue $ rq
         writeTVar (queue rq) $ rQueue ++ [(reg, chan, tId)]
 
-timeoutThread :: (Eq i) => ReplyRegistration i -> ReplyQueue i a -> IO ThreadId
+timeoutThread :: ReplyRegistration i -> ReplyQueue i a -> IO ThreadId
 timeoutThread reg rq = forkIO $ do
     -- Wait 5 seconds
     threadDelay 5
 
     -- Remove the ReplyRegistration from the ReplyQueue
-    myTId <- myThreadId
+    -- TODO: What should be here?
+    -- myTId <- myThreadId
 
     -- Send Timeout signal
     writeChan (timeoutChan rq) . Timeout $ reg

@@ -8,31 +8,38 @@ Network.Kademlia.Networking implements all the UDP network functionality.
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Network.Kademlia.Networking
-    ( openOn
-    , openOnL
-    , startRecvProcess
-    , send
-    , expect
-    , closeK
-    , KademliaHandle
-    , logInfo
-    , logError
-    , logError'
-    ) where
+       ( KademliaHandle
+       , openOn
+       , openOnL
+       , startRecvProcess
+       , send
+       , expect
+       , closeK
+       , logInfo
+       , logError
+       , logError'
+       ) where
 
-import           Control.Concurrent
+import           Control.Concurrent          (Chan, MVar, ThreadId, forkIO, isEmptyMVar,
+                                              killThread, newChan, newEmptyMVar, readChan,
+                                              takeMVar, tryPutMVar, writeChan, yield)
 import           Control.Exception           (SomeException, catch, finally)
 import           Control.Monad               (forM_, forever, unless, void)
 import qualified Data.ByteString             as BS
-import           Data.Default                (Default (..))
-import           Network.Socket              hiding (Closed, recv, recvFrom, send, sendTo)
+import           Network.Socket              (AddrInfo (..), AddrInfoFlag (AI_PASSIVE),
+                                              Socket, SocketOption (ReuseAddr),
+                                              SocketType (Datagram), addrAddress,
+                                              addrFlags, bind, close, defaultHints,
+                                              defaultProtocol, getAddrInfo,
+                                              setSocketOption, socket, withSocketsDo)
 import qualified Network.Socket.ByteString   as S
 import           System.IO.Error             (ioError, userError)
 
-import           Network.Kademlia.Config
-import           Network.Kademlia.Protocol
-import           Network.Kademlia.ReplyQueue hiding (logError, logInfo)
-import           Network.Kademlia.Types
+import           Network.Kademlia.Config     (KademliaConfig (..), defaultConfig)
+import           Network.Kademlia.Protocol   (parse, serialize)
+import           Network.Kademlia.ReplyQueue (Reply (..), ReplyQueue (timeoutChan),
+                                              ReplyRegistration, flush, register)
+import           Network.Kademlia.Types      (Command, Peer (..), Serialize (..), toPeer)
 
 -- | A handle to a UDP socket running the Kademlia connection
 data KademliaHandle i a = KH {
@@ -87,24 +94,24 @@ sendProcessL
     -> (String -> IO ())
     -> (String -> IO ())
     -> IO ()
-sendProcessL sock lim id chan logInfo logError =
-    (withSocketsDo . forever . (`catch` logError') . void $ do
+sendProcessL sock lim nid chan logInfo logError =
+    (withSocketsDo . forever . (`catch` logSomeError') . void $ do
         pair@(cmd, Peer host port) <- readChan chan
 
-        logInfo $ "Send process: sending .. " ++ show pair ++ " (id " ++ show id ++ ")"
+        logInfo $ "Send process: sending .. " ++ show pair ++ " (id " ++ show nid ++ ")"
         -- Get Peer's address
         (peeraddr:_) <- getAddrInfo Nothing (Just host)
-                          (Just . show . fromIntegral $ port)
+                          (Just . show $ port)
 
         -- Send the signal
-        case serialize lim id cmd of
+        case serialize lim nid cmd of
             Left err   -> logError err
             Right sigs -> forM_ sigs $ \sig -> S.sendTo sock sig (addrAddress peeraddr))
                 -- Close socket on exception (ThreadKilled)
                 `finally` close sock
   where
-    logError' :: SomeException -> IO ()
-    logError' e = logError $ "Caught error " ++ show e
+    logSomeError' :: SomeException -> IO ()
+    logSomeError' e = logError $ "Caught error " ++ show e
 
 -- | Dispatch the receiving process
 --
@@ -112,8 +119,10 @@ sendProcessL sock lim id chan logInfo logError =
 --   fails, send it to the supplied default channel instead.
 --
 --   This throws an exception if called a second time.
-startRecvProcess :: (Show i, Serialize i, Serialize a, Eq i, Eq a) => KademliaHandle i a
-                 -> IO ()
+startRecvProcess
+    :: (Show i, Serialize i, Serialize a)
+    => KademliaHandle i a
+    -> IO ()
 startRecvProcess kh = do
     tId <- forkIO $ (withSocketsDo . forever $ do
         -- Read from socket
@@ -143,13 +152,17 @@ startRecvProcess kh = do
 
 -- | Send a Signal to a Peer over the connection corresponding to the
 --   KademliaHandle
-send :: (Serialize i, Serialize a) => KademliaHandle i a -> Peer -> Command i a
+send :: KademliaHandle i a
+     -> Peer
+     -> Command i a
      -> IO ()
 send kh peer cmd = writeChan (sendChan kh) (cmd, peer)
 
 -- | Register a handler channel for a Reply
-expect :: (Serialize i, Serialize a, Eq i) => KademliaHandle i a
-       -> ReplyRegistration i -> Chan (Reply i a) -> IO ()
+expect :: KademliaHandle i a
+       -> ReplyRegistration i
+       -> Chan (Reply i a)
+       -> IO ()
 expect kh reg = register reg . replyQueue $ kh
 
 -- | Close the connection corresponding to a KademliaHandle

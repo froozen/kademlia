@@ -6,12 +6,15 @@ Module      : TestTypes
 Description : Types and Generators needed for general testing
 -}
 
-module TestTypes where
+module TestTypes
+       ( IdType    (..)
+       , NodeBunch (..)
+       , IdBunch   (..)
+       ) where
 
-import           Test.QuickCheck
 
 import           Control.Arrow          (first)
-import           Control.Monad          (liftM, liftM2, liftM3)
+import           Control.Monad          (liftM, liftM2)
 import qualified Data.ByteString        as B
 import qualified Data.ByteString.Char8  as C
 import           Data.Function          (on)
@@ -19,9 +22,14 @@ import           Data.List              (nubBy)
 import           Data.Word              (Word16)
 import           Network.Socket         (PortNumber)
 
-import           Network.Kademlia.Types
+import           Test.QuickCheck        (Arbitrary (..), Gen, oneof, suchThat, vectorOf)
 
-newtype IdType = IT { getBS :: B.ByteString } deriving (Eq, Ord)
+import           Network.Kademlia.Types (Command (..), Node (..), Peer (..),
+                                         Serialize (..), Signal (..))
+
+newtype IdType = IT
+    { getBS :: B.ByteString
+    } deriving (Eq, Ord)
 
 -- Custom show instance
 instance Show IdType where

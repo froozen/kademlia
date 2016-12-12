@@ -8,19 +8,27 @@ It made sense to split it off Network.Kademlia.Protocol as it made both cleaner
 and more readable.
 -}
 
-module Network.Kademlia.Protocol.Parsing where
+module Network.Kademlia.Protocol.Parsing
+       ( parse
+       , parseCommandId
+       , parseSerialize
+       , parseSignal
+       , skipCharacter
+       , parseInt
+       , parseWord16
+       ) where
 
-import qualified Data.ByteString as B
-import qualified Data.ByteString.Char8 as C
-import Control.Monad (liftM, liftM2)
-import Control.Monad.Trans (lift)
-import Control.Monad.State
-import Control.Monad.Trans.Except
-import Text.Read (readMaybe)
-import Data.Word (Word8, Word16)
-import Data.Bits (shiftL)
+import           Control.Monad              (liftM, liftM2)
+import           Control.Monad.State        (State, evalState, get, put)
+import           Control.Monad.Trans        (lift)
+import           Control.Monad.Trans.Except (ExceptT, catchE, runExceptT, throwE)
+import           Data.Bits                  (shiftL)
+import qualified Data.ByteString            as B
+import qualified Data.ByteString.Char8      as C
+import           Data.Word                  (Word16, Word8)
 
-import Network.Kademlia.Types
+import           Network.Kademlia.Types     (Command (..), Node (..), Peer (..),
+                                             Serialize (..), Signal (..))
 
 type Parse = ExceptT String (State B.ByteString)
 
@@ -34,9 +42,9 @@ parse peer = evalState (runExceptT $ parseSignal peer)
 parseSignal :: (Serialize i, Serialize a) => Peer -> Parse (Signal i a)
 parseSignal peer = do
     cId <- parseCommandId
-    id <- parseSerialize
+    nid <- parseSerialize
     cmd <- parseCommand cId
-    let node = Node peer id
+    let node = Node peer nid
     return $ Signal node cmd
 
 -- | Parses a Serialize
@@ -45,9 +53,9 @@ parseSerialize = do
     bs <- lift get
     case fromBS bs of
         Left err -> throwE err
-        Right (id, rest) -> do
+        Right (nid, rest) -> do
             lift . put $ rest
-            return id
+            return nid
 
 -- | Parses a CommandId
 parseCommandId :: Parse Int
@@ -55,9 +63,9 @@ parseCommandId = do
     bs <- lift get
     case B.uncons bs of
         Nothing         -> throwE "uncons returned Nothing"
-        Just (id, rest) -> do
+        Just (nid, rest) -> do
             lift . put $ rest
-            return $ fromIntegral id
+            return $ fromIntegral nid
 
 -- | Splits after a certain character
 parseSplit :: Char -> Parse B.ByteString
@@ -95,11 +103,12 @@ parseWord16 = do
     if B.length bs < 2
         then throwE "ByteString to short"
         else do
-            let (words, rest) = B.splitAt 2 bs
+            let (byteWords, rest) = B.splitAt 2 bs
             lift . put $ rest
-            return . joinWords . B.unpack $ words
+            return . joinWords . B.unpack $ byteWords
     where
         joinWords [a, b] = (toWord16 a `shiftL` 8) + toWord16 b
+        joinWords _      = error "Panic! Error in join words"
 
         toWord16 :: Word8 -> Word16
         toWord16 = fromIntegral
@@ -107,12 +116,12 @@ parseWord16 = do
 -- | Parses a Node's info
 parseNode :: (Serialize i) => Parse (Node i)
 parseNode = do
-    id <- parseSerialize
+    nid <- parseSerialize
     host <- parseSplit ' '
     skipCharacter
     port <- parseWord16
     let peer = Peer (C.unpack host) (fromIntegral port)
-    return $ Node peer id
+    return $ Node peer nid
 
 -- | Parses a trailing k-bucket
 parseKBucket :: (Serialize i) => Parse [Node i]

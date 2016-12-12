@@ -5,24 +5,34 @@ Description : Tests for Network.Kademlia.Instance
 Tests specific to Network.Kademlia.Instance.
 -}
 
-module Instance where
+module Instance
+       ( handlesPingCheck
+       , storeAndFindValueCheck
+       , trackingKnownPeersCheck
+       ) where
 
-import           Test.HUnit                  hiding (assert)
-import           Test.QuickCheck
-import           Test.QuickCheck.Monadic
 
-import           Control.Concurrent.Chan
+import           Control.Concurrent.Chan     (readChan)
 import           Control.Monad               (liftM2)
 import qualified Data.ByteString.Char8       as C
-import           Data.Default                (def)
 import           Data.Maybe                  (fromJust, isJust)
-import           Network.Kademlia
-import           Network.Kademlia.Instance   as I
-import           Network.Kademlia.Networking
-import           Network.Kademlia.ReplyQueue
-import           Network.Kademlia.Types
 
-import           TestTypes
+import           Test.HUnit                  (Assertion, assertEqual)
+import           Test.QuickCheck             (Property, arbitrary, counterexample)
+import           Test.QuickCheck.Monadic     (PropertyM, assert, monadicIO, monitor, pick,
+                                              run)
+
+import           Network.Kademlia            (close, create)
+import           Network.Kademlia.Instance   (KademliaInstance (..), dumpPeers,
+                                              lookupNode)
+import           Network.Kademlia.Networking (KademliaHandle (..), closeK, openOn, send,
+                                              startRecvProcess)
+import           Network.Kademlia.ReplyQueue (Reply (..), ReplyQueue (..),
+                                              emptyReplyQueue)
+import           Network.Kademlia.Types      (Command (..), Node (..), Peer (..),
+                                              Serialize (..), Signal (..), command)
+
+import           TestTypes                   (IdType (..))
 
 -- | The default set of peers
 peers :: (Peer, Peer)
@@ -37,7 +47,7 @@ ids = liftM2 (,) (pick arbitrary) (pick arbitrary)
 -- | Checks wether PINGs are handled appropriately
 handlesPingCheck :: Assertion
 handlesPingCheck = do
-    let (pA, pB) = peers
+    let (_, pB) = peers
 
     let (Right (idA, _)) = fromBS . C.replicate 32 $ 'a'
                            :: Either String (IdType, C.ByteString)
@@ -66,7 +76,7 @@ handlesPingCheck = do
 -- | Make sure a stored value can be retrieved
 storeAndFindValueCheck :: IdType -> String -> Property
 storeAndFindValueCheck key value = monadicIO $ do
-    let (pA, pB) = peers
+    let (_, pB) = peers
     (idA, idB) <- ids
 
     receivedCmd <- run $ do
@@ -83,16 +93,16 @@ storeAndFindValueCheck key value = monadicIO $ do
         -- There is a race condition, so the instance will sometimes try to store
         -- the value in the handle, before replying with a RETURN_VALUE
         (Answer sig) <- readChan . timeoutChan $ rq :: IO (Reply IdType String)
-        sig <- case command sig of
+        cmdSig <- case command sig of
                 STORE _ _ -> do
-                    (Answer sig) <- readChan . timeoutChan $ rq :: IO (Reply IdType String)
-                    return sig
+                    (Answer asig) <- readChan . timeoutChan $ rq :: IO (Reply IdType String)
+                    return asig
                 _ -> return sig
 
         closeK khA
         close kiB
 
-        return . command $ sig
+        return . command $ cmdSig
 
     let cmd = RETURN_VALUE key value :: Command IdType String
 
@@ -116,9 +126,9 @@ trackingKnownPeersCheck = monadicIO $ do
         startRecvProcess khA
 
         send khA pB $ PING
-        readChan . timeoutChan $ rq
+        () <$ readChan (timeoutChan rq)
 
-        node <- I.lookupNode kiB idA
+        node <- lookupNode kiB idA
 
         closeK khA
         close kiB
