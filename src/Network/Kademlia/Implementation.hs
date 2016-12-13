@@ -258,38 +258,49 @@ waitForReply cancel onSignal = do
     case result of
         -- If there was a reply
         Answer sig@(Signal node _) -> do
-            -- Insert the node into the tree, as it might be a new one or it
-            -- would have to be refreshed
-            liftIO . insertNode inst $ node
+            banned <- liftIO $ isNodeBanned inst $ nodeId node
 
-            -- Remove the node from the list of nodes with pending replies
-            modify $ \s -> s { pending = delete node sPending }
+            if banned
+                -- Ignore message from banned node, wait for another message
+                then waitForReply cancel onSignal
+                else do
+                    -- Insert the node into the tree, as it might be a new one or it
+                    -- would have to be refreshed
+                    liftIO . insertNode inst $ node
 
-            -- Call the signal handler
-            onSignal sig
+                    -- Remove the node from the list of nodes with pending replies
+                    modify $ \s -> s { pending = delete node sPending }
+
+                    -- Call the signal handler
+                    onSignal sig
 
         -- On timeout
         Timeout registration -> do
             let id = replyOrigin registration
 
-            -- Find the node corresponding to the id
-            --
-            -- ReplyQueue guarantees us, that it will be in polled, therefore
-            -- we can use fromJust
-            let node = fromJust . find (\n -> nodeId n == id) $ polled
-
-            -- Remove every trace of the node's existance
-            modify $ \s -> s {
-                  pending = delete node sPending
-                , known = delete node known
-                , polled = delete node polled
-                }
-
-            -- Continue, if there still are pending responses
-            updatedPending <- gets pending
-            if not . null $ updatedPending
+            banned <- liftIO $ isNodeBanned inst id
+            if banned
+                -- Ignore message from banned node, wait for another message
                 then waitForReply cancel onSignal
-                else cancel
+                else do
+                    -- Find the node corresponding to the id
+                    --
+                    -- ReplyQueue guarantees us, that it will be in polled, therefore
+                    -- we can use fromJust
+                    let node = fromJust . find (\n -> nodeId n == id) $ polled
+
+                    -- Remove every trace of the node's existance
+                    modify $ \s -> s {
+                        pending = delete node sPending
+                        , known = delete node known
+                        , polled = delete node polled
+                        }
+
+                    -- Continue, if there still are pending responses
+                    updatedPending <- gets pending
+                    if not . null $ updatedPending
+                        then waitForReply cancel onSignal
+                        else cancel
 
         Closed -> cancel
 
