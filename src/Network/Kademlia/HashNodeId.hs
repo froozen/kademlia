@@ -1,19 +1,20 @@
 module Network.Kademlia.HashNodeId
-    ( Nonce
-    , genNonce
-    , HashId
-    , hashIdLength
-    , hashAddress
-    , verifyAddress
-    ) where
+       ( Nonce
+       , HashId
+       , genNonce
+       , hashIdLength
+       , hashAddress
+       , verifyAddress
+       ) where
 
-import qualified Crypto.KDF.PBKDF2 as PBKDF2
-import           Crypto.Hash (SHA256(..), SHA512, Digest, hash)
-import           Crypto.Random
-import           Data.Word
-import qualified Data.ByteString as B
-import qualified Data.ByteString.Lazy as L
-import           Network.Kademlia.Types
+import           Crypto.Hash            (Digest, SHA256 (..), SHA512, hash)
+import qualified Crypto.KDF.PBKDF2      as PBKDF2
+import           Crypto.Random          (MonadRandom, getRandomBytes)
+
+import           Data.ByteArray         (ByteArray, ByteArrayAccess)
+import qualified Data.ByteString        as B
+
+import           Network.Kademlia.Types (Serialize (..))
 
 newtype Nonce = Nonce B.ByteString
 
@@ -28,15 +29,21 @@ instance Serialize HashId where
              in if verifyAddress b1 then Right (HashId b1, b2) else Left "invalid hash id"
         | otherwise                   = Left "invalid size for hashid"
 
-hashIdLength :: Int 
+hashIdLength :: Int
 hashIdLength = outputLen + nonceLen
 
 -- Parameters for the hashing function. 500 iter of PBDKF2 with HMAC-SHA256
-nonceLen = 14 -- 14 bytes of nonce
+nonceLen, outputLen :: Int
+nonceLen  = 14 -- 14 bytes of nonce
 outputLen = 18 -- 18 bytes of hashing
-iter = 500
 
-hashingFct pass salt = PBKDF2.generate (PBKDF2.prfHMAC SHA256) (PBKDF2.Parameters 500 outputLen) pass salt
+hashingFct
+    :: ( ByteArrayAccess password
+       , ByteArrayAccess salt
+       , ByteArray ba
+       ) => password -> salt -> ba
+hashingFct pass salt =
+    PBKDF2.generate (PBKDF2.prfHMAC SHA256) (PBKDF2.Parameters 500 outputLen) pass salt
 
 nonceToSalt :: Nonce -> Digest SHA512
 nonceToSalt (Nonce n) = hash n

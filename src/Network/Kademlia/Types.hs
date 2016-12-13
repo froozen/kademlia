@@ -7,24 +7,25 @@ Network.Kademlia codebase.
 -}
 
 module Network.Kademlia.Types
-    ( Peer(..)
-    , toPeer
-    , Node(..)
-    , sortByDistanceTo
-    , Serialize(..)
-    , Signal(..)
-    , Command(..)
-    , ByteStruct(..)
-    , toByteStruct
-    , fromByteStruct
-    , distance
-    ) where
+       ( ByteStruct
+       , Command   (..)
+       , Node      (..)
+       , Peer      (..)
+       , Serialize (..)
+       , Signal    (..)
+
+       , distance
+       , fromByteStruct
+       , sortByDistanceTo
+       , toByteStruct
+       , toPeer
+       ) where
 
 import           Data.Bits       (setBit, testBit, zeroBits)
 import qualified Data.ByteString as B (ByteString, foldr, pack)
 import           Data.Function   (on)
 import           Data.List       (sortBy)
-import           Network.Socket  (PortNumber, SockAddr (..), inet_addr, inet_ntoa)
+import           Network.Socket  (PortNumber, SockAddr (..), inet_ntoa)
 
 -- | Representation of an UDP peer
 data Peer = Peer {
@@ -46,9 +47,9 @@ instance Show i => Show (Node i) where
 
 -- | Sort a bucket by the closeness of its nodes to a give Id
 sortByDistanceTo :: (Serialize i) => [Node i] -> i -> [Node i]
-sortByDistanceTo bucket id = unpack . sort . pack $ bucket
+sortByDistanceTo bucket nid = unpack . sort . pack $ bucket
     where pack bk = zip bk $ map f bk
-          f = distance id . nodeId
+          f = distance nid . nodeId
           sort = sortBy (compare `on` snd)
           unpack = map fst
 
@@ -112,7 +113,7 @@ data Command i a = PING
 instance Show i => Show (Command i a) where
   show PING                   = "PING"
   show PONG                   = "PONG"
-  show (STORE        i a)     = "STORE " ++ show i ++ " <data>"
+  show (STORE        i _)     = "STORE " ++ show i ++ " <data>"
   show (FIND_NODE    i)       = "FIND_NODE " ++ show i
   show (RETURN_NODES i nodes) = "RETURN_VALUE " ++ show i ++ " " ++ show nodes
   show (FIND_VALUE   i)       = "FIND_VALUE " ++ show i

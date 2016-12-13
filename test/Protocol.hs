@@ -6,25 +6,25 @@ Tests specific to Network.Kademlia.Protocol.
 -}
 
 module Protocol
-    ( parseCheck
-    , lengthCheck
-    , IdType(..)
-    ) where
+       ( parseCheck
+       , lengthCheck
+       ) where
 
-import           Test.QuickCheck
-
-import           Control.Monad             (forM_)
 import qualified Data.ByteString           as B
-import           Network.Kademlia.Protocol
-import           Network.Kademlia.Types
-import           TestTypes
+import           Test.QuickCheck           (Property, conjoin, counterexample, (===),
+                                            (==>))
+
+import           Network.Kademlia.Protocol (parse, serialize)
+import           Network.Kademlia.Types    (Command (..), Node (..), Signal (..))
+
+import           TestTypes                 (IdType (..))
 
 -- | A signal is the same as its serialized form parsed
 parseCheck :: Signal IdType String -> Property
 parseCheck s = test . (>>= parse (peer . source $ s))
-             . fmap head . serialize 99999 id . command $ s
-    where id = nodeId . source $ s
-          test (Left err) = counterexample "Parsing failed" False
+             . fmap head . serialize 99999 nid . command $ s
+    where nid = nodeId . source $ s
+          test (Left   _) = counterexample "Parsing failed" False
           test (Right s') = counterexample
             ("Signals differ:\nIn:  " ++ show s ++ "\nOut: "
                  ++ show s' ++ "\n") $ s === s'

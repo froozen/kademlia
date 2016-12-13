@@ -5,26 +5,30 @@ Description : Tests for Network.Kademlia.Implementation
 Tests specific to Network.Kademlia.Implementation.
 -}
 
-module Implementation where
+module Implementation
+       ( idClashCheck
+       , joinCheck
+       , joinFullCheck
+       , lookupNodesCheck
+       , nodeDownCheck
+       , storeAndLookupCheck
+       ) where
 
-import           Control.Applicative
-import           Control.Concurrent.STM
+import           Control.Applicative       ()
+import           Control.Concurrent.STM    (atomically, readTVar)
 import           Control.Monad             (forM, forM_, mapM, zipWithM)
-import           Control.Monad.IO.Class    (liftIO)
-
 import qualified Data.ByteString.Char8     as C
-import           Data.Maybe                (fromJust, isJust)
 
-import           Test.HUnit                hiding (assert)
-import           Test.QuickCheck
-import           Test.QuickCheck.Monadic
+import           Test.HUnit                (Assertion, assertEqual)
+import           Test.QuickCheck           (Property)
+import           Test.QuickCheck.Monadic   (PropertyM, assert, monadicIO, run)
 
 import qualified Network.Kademlia          as K
-import           Network.Kademlia.Instance
+import           Network.Kademlia.Instance (KademliaInstance (..), KademliaState (..))
 import qualified Network.Kademlia.Tree     as T
-import           Network.Kademlia.Types
+import           Network.Kademlia.Types    (Node (..), Peer (..))
 
-import           TestTypes
+import           TestTypes                 (IdBunch (..), IdType (..))
 
 constructNetwork :: IdBunch IdType -> PropertyM IO [KademliaInstance IdType String]
 constructNetwork idBunch = run $ do
@@ -60,7 +64,7 @@ joinFullCheck = joinNetworkVerifier 11
 -- | Make sure ID clashes are detected properly
 idClashCheck :: IdType -> IdType -> Property
 idClashCheck idA idB = monadicIO $ do
-    let peers = map (Peer "127.0.0.1") [1123..]
+    let _ = map (Peer "127.0.0.1") [1123..]
         ids = [idA, idB, idA]
         entryNode = Node (Peer "127.0.0.1" 1124) idB
 
@@ -68,7 +72,7 @@ idClashCheck idA idB = monadicIO $ do
         insts@[kiA, _, kiB] <- zipWithM K.create [1123..] ids
                             :: IO [KademliaInstance IdType String]
 
-        K.joinNetwork kiA $ entryNode
+        () <$ K.joinNetwork kiA entryNode
         joinResult <- K.joinNetwork kiB $ entryNode
 
         mapM_ K.close insts
@@ -130,5 +134,5 @@ lookupNodesCheck ids = monadicIO $ do
 
     assert . and $ success
 
-    where tryLookup inst id = check id <$> K.lookupNode inst id
-          check id = maybe False ((== id) . nodeId)
+    where tryLookup inst nid = check nid <$> K.lookupNode inst nid
+          check nid = maybe False ((== nid) . nodeId)

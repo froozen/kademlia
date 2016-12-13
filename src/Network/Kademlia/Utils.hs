@@ -1,9 +1,9 @@
 module Network.Kademlia.Utils
-    ( threadDelay
-    , mkTimer
-    , hour
-    , minute
-    ) where
+       ( threadDelay
+       , mkTimer
+       , hour
+       , minute
+       ) where
 
 import qualified Control.Concurrent    (threadDelay)
 import           Data.Time.Clock.POSIX (getPOSIXTime)
@@ -20,5 +20,6 @@ mkTimer timeout = do
         cur <- getPOSIXTime
         return $ cur < start + fromIntegral (timeout * 1000000)
 
-hour n = 3600 * n
-minute n = 60 * n
+hour, minute :: Num a => a -> a
+hour   n = 3600 * n
+minute n = 60   * n

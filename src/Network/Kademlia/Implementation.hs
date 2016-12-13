@@ -16,26 +16,31 @@ module Network.Kademlia.Implementation
     , Network.Kademlia.Implementation.lookupNode
     ) where
 
-import           Control.Concurrent.Chan
-import           Control.Concurrent.STM
-import           Control.Monad               (forM_, unless, when)
+import           Prelude                     hiding (lookup)
+
+import           Control.Concurrent.Chan     (Chan, newChan, readChan)
+import           Control.Concurrent.STM      (atomically, readTVar)
+import           Control.Monad               (forM_, unless)
 import           Control.Monad.IO.Class      (liftIO)
-import           Control.Monad.Trans.State   hiding (state)
+import           Control.Monad.Trans.State   (StateT, evalStateT, gets, modify)
 import           Data.List                   (delete, find, (\\))
-import           Data.Maybe                  (fromJust, isJust)
-import           Network.Kademlia.Instance
-import           Network.Kademlia.Networking
+import           Data.Maybe                  (fromJust)
+
+import           Network.Kademlia.Config     (KademliaConfig (..))
+import           Network.Kademlia.Instance   (KademliaInstance (..), KademliaState (..),
+                                              insertNode, isNodeBanned)
+import           Network.Kademlia.Networking (expect, send)
 import           Network.Kademlia.ReplyQueue hiding (logError, logInfo)
 import qualified Network.Kademlia.Tree       as T
-import           Network.Kademlia.Types
-import           Prelude                     hiding (lookup)
+import           Network.Kademlia.Types      (Command (..), Node (..), Serialize (..),
+                                              Signal (..), sortByDistanceTo)
 
 
 -- | Lookup the value corresponding to a key in the DHT and return it, together
 --   with the Node that was the first to answer the lookup
-lookup :: (Serialize i, Serialize a, Eq i, Ord i) => KademliaInstance i a -> i
+lookup :: (Serialize i, Serialize a, Ord i) => KademliaInstance i a -> i
        -> IO (Maybe (a, Node i))
-lookup inst id = runLookup go inst id
+lookup inst nid = runLookup go inst nid
     where go = startLookup (config inst) sendS cancel checkSignal
 
           -- Return Nothing on lookup failure
@@ -58,8 +63,8 @@ lookup inst id = runLookup go inst id
                 polled <- gets polled
                 let rest = polled \\ known
                 unless (null rest) $ do
-                    let cachePeer = peer . head . sortByDistanceTo rest $ id
-                    liftIO . send (handle inst) cachePeer . STORE id $ value
+                    let cachePeer = peer . head . sortByDistanceTo rest $ nid
+                    liftIO . send (handle inst) cachePeer . STORE nid $ value
 
                 -- Return the value
                 return . Just $ (value, origin)
@@ -68,12 +73,13 @@ lookup inst id = runLookup go inst id
           -- lookup loop and continue the lookup
           checkSignal (Signal _ (RETURN_NODES _ nodes)) =
                 continueLookup nodes sendS continue cancel
+          checkSignal _ = error "Fundamental error in unhandled query @lookup@"
 
           -- Continuing always means waiting for the next signal
           continue = waitForReply cancel checkSignal
 
           -- Send a FIND_VALUE command, looking for the supplied id
-          sendS = sendSignal (FIND_VALUE id)
+          sendS = sendSignal (FIND_VALUE nid)
 
           -- As long as there still are pending requests, wait for the next one
           finish = do
@@ -88,7 +94,7 @@ lookup inst id = runLookup go inst id
           finishCheck _ = finish
 
 -- | Store assign a value to a key and store it in the DHT
-store :: (Serialize i, Serialize a, Eq i, Ord i) =>
+store :: (Serialize i, Serialize a, Ord i) =>
          KademliaInstance i a -> i -> a -> IO ()
 store inst key val = runLookup go inst key
     where go = startLookup (config inst) sendS end checkSignal
@@ -96,6 +102,7 @@ store inst key val = runLookup go inst key
           -- Always add the nodes into the loop and continue the lookup
           checkSignal (Signal _ (RETURN_NODES _ nodes)) =
                 continueLookup nodes sendS continue end
+          checkSignal _ = error "Meet unknown signal in store"
 
           -- Continuing always means waiting for the next signal
           continue = waitForReply end checkSignal
@@ -125,7 +132,7 @@ store inst key val = runLookup go inst key
 data JoinResult = JoinSucces | NodeDown | IDClash deriving (Eq, Ord, Show)
 
 -- | Make a KademliaInstance join the network a supplied Node is in
-joinNetwork :: (Serialize i, Serialize a, Eq i, Ord i) => KademliaInstance i a
+joinNetwork :: (Serialize i, Serialize a, Ord i) => KademliaInstance i a
             -> Node i -> IO JoinResult
 joinNetwork inst node = ownId >>= runLookup go inst
     where go = do
@@ -147,26 +154,27 @@ joinNetwork inst node = ownId >>= runLookup go inst
           checkSignal (Signal _ (RETURN_NODES _ nodes)) = do
                 forM_ nodes $ liftIO . insertNode inst
                 tId <- gets targetId
-                case find (\node -> nodeId node == tId) nodes of
+                case find (\retNode -> nodeId retNode == tId) nodes of
                     Just _ -> return IDClash
                     _      -> continueLookup nodes sendS continue finish
+          checkSignal _ = error "Unknow signal for @joinNetwork@"
 
           -- Continuing always means waiting for the next signal
           continue = waitForReply finish checkSignal
 
           -- Send a FIND_NODE command, looking up your own id
-          sendS node = liftIO ownId >>= flip sendSignal node . FIND_NODE
+          sendS sendNode = liftIO ownId >>= flip sendSignal sendNode . FIND_NODE
 
           -- Return a success, when the operation finished cleanly
           finish = return JoinSucces
 
 -- | Lookup the Node corresponding to the supplied ID
 lookupNode :: forall i a .
-              (Serialize i, Serialize a, Eq i, Ord i)
+              (Serialize i, Serialize a, Ord i)
            => KademliaInstance i a
            -> i
            -> IO (Maybe (Node i))
-lookupNode inst id = runLookup go inst id
+lookupNode inst nid = runLookup go inst nid
   where
     go :: LookupM i a (Maybe (Node i))
     go = startLookup (config inst) sendS end checkSignal
@@ -182,7 +190,7 @@ lookupNode inst id = runLookup go inst id
     checkSignal :: Signal i v -> LookupM i a (Maybe (Node i))
     checkSignal (Signal _ (RETURN_NODES _ nodes)) = do
         forM_ nodes $ liftIO . insertNode inst
-        let targetNode = find ((== id) . nodeId) nodes
+        let targetNode = find ((== nid) . nodeId) nodes
         case targetNode of
             Nothing  -> continueLookup nodes sendS continue end
             justNode -> return justNode
@@ -193,12 +201,12 @@ lookupNode inst id = runLookup go inst id
     continue = waitForReply end checkSignal
 
     -- Send a FIND_NODE command looking for the Node corresponding to the id
-    sendS :: (Serialize i, Serialize a, Eq i) => Node i -> LookupM i a ()
-    sendS = sendSignal (FIND_NODE id)
+    sendS :: Node i -> LookupM i a ()
+    sendS = sendSignal (FIND_NODE nid)
 
 -- | The state of a lookup
-data LookupState i a = LookupState {
-      inst      :: !(KademliaInstance i a)
+data LookupState i a = LookupState
+    { inst      :: !(KademliaInstance i a)
     , targetId  :: !i
     , replyChan :: !(Chan (Reply i a))
     , known     :: ![Node i]
@@ -211,29 +219,28 @@ type LookupM i a = StateT (LookupState i a) IO
 
 -- Run a LookupM, returning its result
 runLookup :: LookupM i a b -> KademliaInstance i a -> i ->IO b
-runLookup lookup inst id = do
+runLookup lookupM inst nid = do
     chan <- newChan
-    let state = LookupState inst id chan [] [] []
+    let state = LookupState inst nid chan [] [] []
 
-    evalStateT lookup state
+    evalStateT lookupM state
 
 -- The initial phase of the normal kademlia lookup operation
-startLookup :: (Serialize i, Serialize a, Eq i, Ord i)
+startLookup :: (Serialize i, Serialize a, Ord i)
             => KademliaConfig
             -> (Node i -> LookupM i a ())
             -> LookupM i a b -> (Signal i a -> LookupM i a b) -> LookupM i a b
-startLookup cfg sendSignal cancel onSignal = do
-    inst <- gets inst
-    tree <- liftIO . atomically . readTVar . sTree . state $ inst
-    chan <- gets replyChan
-    id   <- gets targetId
+startLookup cfg signalAction cancel onSignal = do
+    inst  <- gets inst
+    tree  <- liftIO . atomically . readTVar . sTree . state $ inst
+    nid   <- gets targetId
 
     -- Find the three nodes closest to the supplied id
-    case T.findClosest tree id (nbLookupNodes cfg) of
+    case T.findClosest tree nid (nbLookupNodes cfg) of
             [] -> cancel
             closest -> do
                 -- Send a signal to each of the Nodes
-                forM_ closest sendSignal
+                forM_ closest signalAction
 
                 -- Add them to the list of known nodes. At this point, it will
                 -- be empty, therfore just overwrite it.
@@ -276,18 +283,19 @@ waitForReply cancel onSignal = do
 
         -- On timeout
         Timeout registration -> do
-            let id = replyOrigin registration
+            let nid = replyOrigin registration
 
-            banned <- liftIO $ isNodeBanned inst id
+            banned <- liftIO $ isNodeBanned inst nid
             if banned
                 -- Ignore message from banned node, wait for another message
+
                 then waitForReply cancel onSignal
                 else do
                     -- Find the node corresponding to the id
                     --
                     -- ReplyQueue guarantees us, that it will be in polled, therefore
                     -- we can use fromJust
-                    let node = fromJust . find (\n -> nodeId n == id) $ polled
+                    let node = fromJust . find (\n -> nodeId n == nid) $ polled
 
                     -- Remove every trace of the node's existance
                     modify $ \s -> s {
@@ -307,26 +315,26 @@ waitForReply cancel onSignal = do
 -- Decide wether, and which node to poll and react appropriately.
 --
 -- This is the meat of kademlia lookups
-continueLookup :: (Serialize i, Serialize a, Eq i) => [Node i]
+continueLookup :: (Serialize i, Eq i) => [Node i]
                -> (Node i -> LookupM i a ()) -> LookupM i a b -> LookupM i a b
                -> LookupM i a b
-continueLookup nodes sendSignal continue end = do
-    known <- gets known
-    id <- gets targetId
+continueLookup nodes signalAction continue end = do
+    known   <- gets known
+    nid     <- gets targetId
     pending <- gets pending
-    polled <- gets polled
+    polled  <- gets polled
 
     -- Pick the k closest known nodes, that haven't been polled yet
     let newKnown = take 7 . filter (`notElem` polled) $ nodes ++ known
 
     -- If there the k closest nodes haven't been polled yet
-    closestPolled <- closestPolled newKnown
-    if (not . null $ newKnown) && not closestPolled
+    polledNeighbours <- closestPolled newKnown
+    if (not . null $ newKnown) && not polledNeighbours
         then do
             -- Send signal to the closest node, that hasn't
             -- been polled yet
-            let next = head . sortByDistanceTo newKnown $ id
-            sendSignal next
+            let next = head . sortByDistanceTo newKnown $ nid
+            signalAction next
 
             -- Update known
             modify $ \s -> s { known = newKnown }
@@ -342,21 +350,22 @@ continueLookup nodes sendSignal continue end = do
             else end
 
     where closestPolled known = do
-            polled <- gets polled
-            closest <- closest known
+            polled       <- gets polled
+            closestKnown <- closest known
 
-            return . all (`elem` polled) $ closest
+            return . all (`elem` polled) $ closestKnown
 
           closest known = do
-            id <- gets targetId
+            cid    <- gets targetId
             polled <- gets polled
 
             -- Return the 7 closest nodes, the lookup had contact with
-            return . take 7 . sortByDistanceTo (known ++ polled) $ id
+            return . take 7 . sortByDistanceTo (known ++ polled) $ cid
 
 -- Send a signal to a node
-sendSignal :: (Serialize i, Serialize a, Eq i) => Command i a
-          -> Node i -> LookupM i a ()
+sendSignal :: Command i a
+           -> Node i
+           -> LookupM i a ()
 sendSignal cmd node = do
     h <- fmap handle . gets $ inst
     chan <- gets replyChan
@@ -377,6 +386,7 @@ sendSignal cmd node = do
 
     -- Determine the appropriate ReplyRegistrations to the command
     where regs = case cmd of
-                    (FIND_NODE id)  -> RR [R_RETURN_NODES id] (nodeId node)
-                    (FIND_VALUE id) ->
-                        RR [R_RETURN_NODES id, R_RETURN_VALUE id] (nodeId node)
+                    (FIND_NODE nid)  -> RR [R_RETURN_NODES nid] (nodeId node)
+                    (FIND_VALUE nid) ->
+                        RR [R_RETURN_NODES nid, R_RETURN_VALUE nid] (nodeId node)
+                    _               -> error "Unknown command at @sendSignal@"

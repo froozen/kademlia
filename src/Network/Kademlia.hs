@@ -132,6 +132,7 @@ module Network.Kademlia
     , Peer(..)
     ) where
 
+import           Network.Kademlia.Config
 import           Network.Kademlia.Implementation as I
 import           Network.Kademlia.Instance
 import           Network.Kademlia.Networking
@@ -142,7 +143,7 @@ import           Prelude                         hiding (lookup)
 
 -- | Create a new KademliaInstance corresponding to a given Id on a given port
 create
-    :: (Show i, Serialize i, Ord i, Serialize a, Eq a, Eq i)
+    :: (Show i, Serialize i, Ord i, Serialize a, Eq a)
     => Int
     -> i
     -> IO (KademliaInstance i a)
@@ -151,7 +152,7 @@ create port id' =
 
 -- | Same as create, but with logging
 createL
-    :: (Show i, Serialize i, Ord i, Serialize a, Eq a, Eq i)
+    :: (Show i, Serialize i, Ord i, Serialize a, Eq a)
     => Int
     -> i
     -> KademliaConfig

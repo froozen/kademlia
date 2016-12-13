@@ -8,9 +8,8 @@ Kademlia instance.
 -}
 
 module Network.Kademlia.Instance
-    ( KademliaInstance(..)
-    , KademliaState(..)
-    , KademliaConfig(..)
+    ( KademliaInstance (..)
+    , KademliaState    (..)
     , defaultConfig
     , start
     , newInstance
@@ -21,53 +20,56 @@ module Network.Kademlia.Instance
     , isNodeBanned
     ) where
 
-import           Control.Applicative         ((<$>), (<*>))
-import           Control.Concurrent          hiding (threadDelay)
-import           Control.Concurrent.Chan
-import           Control.Concurrent.STM
+import           Control.Concurrent          (ThreadId, forkIO, killThread, myThreadId)
+import           Control.Concurrent.Chan     (Chan, readChan)
+import           Control.Concurrent.STM      (TVar, atomically, modifyTVar, newTVar,
+                                              readTVar, writeTVar)
 import           Control.Exception           (catch)
-import           Control.Monad               (forM_, forever, forever, join, void, when)
+import           Control.Monad               (forM_, forever, forever, void, when)
 import           Control.Monad               (unless)
 import           Control.Monad.Extra         (unlessM)
 import           Control.Monad.IO.Class      (liftIO)
-import           Control.Monad.Trans
-import           Control.Monad.Trans.Reader
-import           Control.Monad.Trans.State   hiding (state)
-import           Data.Function               (on)
-import           Data.Map                    (toList)
-import qualified Data.Map                    as M
-import           Data.Maybe                  (catMaybes, fromJust, isJust)
-import           System.IO.Error             (catchIOError)
+import           Control.Monad.Trans         ()
+import           Control.Monad.Trans.Reader  ()
+import           Control.Monad.Trans.State   ()
+import           Data.Map                    (Map, toList)
+import qualified Data.Map                    as M hiding (Map)
+import           Data.Maybe                  (fromJust, isJust)
 import           System.Random               (newStdGen)
 
-import           Network.Kademlia.Config
-import           Network.Kademlia.Networking
-import           Network.Kademlia.ReplyQueue hiding (logError, logInfo)
+import           Network.Kademlia.Config     (KademliaConfig (..), defaultConfig)
+import           Network.Kademlia.Networking (KademliaHandle (..), expect, logError',
+                                              send, startRecvProcess)
+import           Network.Kademlia.ReplyQueue (Reply (..), ReplyQueue (timeoutChan),
+                                              ReplyRegistration (..), ReplyType (..),
+                                              defaultChan, dispatch)
 import qualified Network.Kademlia.Tree       as T
-import           Network.Kademlia.Types
-import           Network.Kademlia.Utils
+import           Network.Kademlia.Types      (Command (..), Node (..), Peer (..),
+                                              Serialize (..), Signal (..),
+                                              sortByDistanceTo)
+import           Network.Kademlia.Utils      (threadDelay)
 
 -- | The handle of a running Kademlia Node
 data KademliaInstance i a = KI {
       handle            :: KademliaHandle i a
     , state             :: KademliaState i a
-    , expirationThreads :: TVar (M.Map i ThreadId)
+    , expirationThreads :: TVar (Map i ThreadId)
     , config            :: KademliaConfig
     }
 
 -- | Representation of the data the KademliaProcess carries
 data KademliaState i a = KS {
       sTree  :: TVar (T.NodeTree i)
-    , banned :: TVar (M.Map i (IO Bool))  -- list of banned node;
-                                          -- map value == False if ban expired
-    , values :: Maybe (TVar (M.Map i a))
+    , banned :: TVar (Map i (IO Bool))  -- list of banned node;
+                                        -- map value == False if ban expired
+    , values :: Maybe (TVar (Map i a))
     }
 
 -- | Create a new KademliaInstance from an Id and a KademliaHandle
 newInstance :: (Serialize i) =>
                i -> KademliaConfig -> KademliaHandle i a -> IO (KademliaInstance i a)
-newInstance id cfg handle = do
-    tree <- atomically . newTVar . T.create $ id
+newInstance nid cfg handle = do
+    tree <- atomically . newTVar . T.create $ nid
     banned <- atomically . newTVar $ M.empty
     values <- if storeValues cfg then Just <$> (atomically . newTVar $ M.empty) else pure Nothing
     threads <- atomically . newTVar $ M.empty
@@ -84,17 +86,17 @@ insertNode (KI _ (KS sTree banned _) _ _) node = do
 
 -- | Signal a Node's timeout and retur wether it should be repinged
 timeoutNode :: (Serialize i, Ord i) => KademliaInstance i a -> i -> IO Bool
-timeoutNode (KI _ (KS sTree _ _) _ _) id = atomically $ do
+timeoutNode (KI _ (KS sTree _ _) _ _) nid = atomically $ do
     tree <- readTVar sTree
-    let (newTree, pingAgain) = T.handleTimeout tree id
+    let (newTree, pingAgain) = T.handleTimeout tree nid
     writeTVar sTree newTree
     return pingAgain
 
 -- | Lookup a Node in the NodeTree
 lookupNode :: (Serialize i, Ord i) => KademliaInstance i a -> i -> IO (Maybe (Node i))
-lookupNode (KI _ (KS sTree _ _) _ _) id = atomically $ do
+lookupNode (KI _ (KS sTree _ _) _ _) nid = atomically $ do
     tree <- readTVar sTree
-    return . T.lookup tree $ id
+    return . T.lookup tree $ nid
 
 -- | Return all the Nodes an Instance has encountered so far
 dumpPeers :: KademliaInstance i a -> IO [Node i]
@@ -104,34 +106,34 @@ dumpPeers (KI _ (KS sTree _ _) _ _) = atomically $ do
 
 -- | Insert a value into the store
 insertValue :: (Ord i) => i -> a -> KademliaInstance i a -> IO ()
-insertValue key value (KI _ (KS _ _ Nothing) _ _) = return ()
+insertValue _ _ (KI _ (KS _ _ Nothing) _ _)             = return ()
 insertValue key value (KI _ (KS _ _ (Just values)) _ _) = atomically $ do
     vals <- readTVar values
     writeTVar values $ M.insert key value vals
 
 -- | Delete a value from the store
 deleteValue :: (Ord i) => i -> KademliaInstance i a -> IO ()
-deleteValue key (KI _ (KS _ _ Nothing) _ _) = return ()
+deleteValue _ (KI _ (KS _ _ Nothing) _ _)         = return ()
 deleteValue key (KI _ (KS _ _ (Just values)) _ _) = atomically $ do
     vals <- readTVar values
     writeTVar values $ M.delete key vals
 
 -- | Lookup a value in the store
 lookupValue :: (Ord i) => i -> KademliaInstance i a -> IO (Maybe a)
-lookupValue key (KI _ (KS _ _ Nothing) _ _) = pure Nothing
+lookupValue _   (KI _ (KS _ _ Nothing) _ _) = pure Nothing
 lookupValue key (KI _ (KS _ _ (Just values)) _ _) = atomically $ do
     vals <- readTVar values
     return . M.lookup key $ vals
 
 -- | Check whether node is banned
-isNodeBanned :: (Serialize i, Ord i) => KademliaInstance i a -> i -> IO Bool
-isNodeBanned (KI _ (KS _ banned _) _ _) id = do
+isNodeBanned :: Ord i => KademliaInstance i a -> i -> IO Bool
+isNodeBanned (KI _ (KS _ banned _) _ _) nid = do
     banSet <- atomically $ readTVar banned
-    case M.lookup id banSet of
+    case M.lookup nid banSet of
         Nothing -> return False
         Just bannedIO -> do
             ban <- bannedIO
-            unless ban $ atomically . modifyTVar banned $ M.delete id
+            unless ban $ atomically . modifyTVar banned $ M.delete nid
             return ban
 
 -- | Set a way to evaluate, whether given node is banned.
@@ -139,12 +141,12 @@ isNodeBanned (KI _ (KS _ banned _) _ _) id = do
 --
 -- To temporaly ban node `Utils.mkTimer` would be handy.
 banNode :: (Serialize i, Ord i) => KademliaInstance i a -> i -> IO Bool -> IO ()
-banNode (KI _ (KS sTree banned _) _ _) id evalBan = atomically $ do
-    modifyTVar banned $ M.insert id evalBan
-    modifyTVar sTree $ \t -> T.delete t id
+banNode (KI _ (KS sTree banned _) _ _) nid evalBan = atomically $ do
+    modifyTVar banned $ M.insert nid evalBan
+    modifyTVar sTree $ \t -> T.delete t nid
 
 -- | Start the background process for a KademliaInstance
-start :: (Show i, Serialize i, Ord i, Serialize a, Eq i, Eq a) =>
+start :: (Show i, Serialize i, Ord i, Serialize a, Eq a) =>
          KademliaInstance i a -> ReplyQueue i a -> IO ()
 start inst rq = do
         startRecvProcess . handle $ inst
@@ -156,7 +158,7 @@ start inst rq = do
         void . forkIO $ backgroundProcess inst dChan [pingId, spreadId, receivingId]
 
 -- | The central process all Replys go trough
-receivingProcess :: (Show i, Serialize i, Serialize a, Eq i, Ord i) =>
+receivingProcess :: (Show i, Serialize i, Ord i) =>
        KademliaInstance i a -> ReplyQueue i a -> Chan (Reply i a)
     -> Chan (Reply i a)-> IO ()
 receivingProcess inst@(KI h _ _ _) rq replyChan registerChan = forever . (`catch` logError' h) $ do
@@ -168,8 +170,7 @@ receivingProcess inst@(KI h _ _ _) rq replyChan registerChan = forever . (`catch
         -- Handle a timed out node
         Timeout registration -> do
             let origin = replyOrigin registration
-                h = handle inst
-                newRegistration = registration { replyTypes = [R_PONG] }
+            let newRegistration = registration { replyTypes = [R_PONG] }
 
             -- If peer is banned, ignore
             unlessM (isNodeBanned inst origin) $ do
@@ -205,8 +206,7 @@ receivingProcess inst@(KI h _ _ _) rq replyChan registerChan = forever . (`catch
                     -- This node can be assumed to be closest to the new node
                     when (ownId == closestId) $ do
                         storedValues <- toList <$> retrieveMaybe values
-                        let h = handle inst
-                            p = peer node
+                        let p = peer node
                         -- Store all stored values in the new node
                         forM_ storedValues (send h p . uncurry STORE)
 
@@ -214,10 +214,10 @@ receivingProcess inst@(KI h _ _ _) rq replyChan registerChan = forever . (`catch
                     -- Ping unknown Nodes that were returned by RETURN_NODES.
                     -- Pinging them first is neccessary to prevent disconnected
                     -- nodes from spreading through the networks NodeTrees.
-                    (RETURN_NODES _ nodes) -> forM_ nodes $ \node -> do
-                        result <- lookupNode inst . nodeId $ node
+                    (RETURN_NODES _ nodes) -> forM_ nodes $ \retNode -> do
+                        result <- lookupNode inst . nodeId $ retNode
                         case result of
-                            Nothing -> send (handle inst) (peer node) PING
+                            Nothing -> send (handle inst) (peer retNode) PING
                             _       -> return ()
                     _ -> return ()
 
@@ -230,7 +230,7 @@ receivingProcess inst@(KI h _ _ _) rq replyChan registerChan = forever . (`catch
 
 
 -- | The actual process running in the background
-backgroundProcess :: (Show i, Serialize i, Ord i, Serialize a, Eq i, Eq a) =>
+backgroundProcess :: (Show i, Serialize i, Ord i, Serialize a, Eq a) =>
     KademliaInstance i a -> Chan (Reply i a) -> [ThreadId] -> IO ()
 backgroundProcess inst@(KI h _ _ _) chan threadIds = do
     reply <- liftIO . readChan $ chan
@@ -261,8 +261,9 @@ backgroundProcess inst@(KI h _ _ _) chan threadIds = do
         insertNode inst node
 
 -- | Ping all known nodes every five minutes to make sure they are still present
-pingProcess :: (Serialize i, Serialize a, Eq i) => KademliaInstance i a
-            -> Chan (Reply i a) -> IO ()
+pingProcess :: KademliaInstance i a
+            -> Chan (Reply i a)
+            -> IO ()
 pingProcess (KI h (KS sTree _ _) _ cfg) chan = forever . (`catch` logError' h) $ do
     threadDelay (pingTime cfg)
 
@@ -273,7 +274,8 @@ pingProcess (KI h (KS sTree _ _) _ cfg) chan = forever . (`catch` logError' h) $
         expect h (RR [R_PONG] (nodeId node)) $ chan
 
 -- | Store all values stored in the node in the 7 closest known nodes every hour
-spreadValueProcess :: (Serialize i, Serialize a, Eq i) => KademliaInstance i a
+spreadValueProcess :: (Serialize i)
+                   => KademliaInstance i a
                    -> IO ()
 spreadValueProcess (KI h (KS sTree _ sValues) _ cfg) = forever . (`catch` logError' h) . void $ do
     threadDelay (storeValueTime cfg)
@@ -284,15 +286,14 @@ spreadValueProcess (KI h (KS sTree _ sValues) _ cfg) = forever . (`catch` logErr
             values <- atomically . readTVar $ valueVars
             tree <- atomically . readTVar $ sTree
 
-            mapMWithKey (sendRequests tree) $ values
-            return ()
+            () <$ mapMWithKey (sendRequests tree) values
 
     where
           sendRequests tree key val = do
             let closest = T.findClosest tree key 7
             forM_ closest $ \node -> send h (peer node) (STORE key val)
 
-          mapMWithKey :: (k -> v -> IO a) -> M.Map k v -> IO [a]
+          mapMWithKey :: (k -> v -> IO a) -> Map k v -> IO [a]
           mapMWithKey f m = sequence . map snd . M.toList . M.mapWithKey f $ m
 
 -- | Delete a value after a certain amount of time has passed
@@ -312,12 +313,12 @@ expirationProcess inst@(KI _ _ valueTs cfg) key = do
     deleteValue key inst
 
 -- | Handles the differendt Kademlia Commands appropriately
-handleCommand :: (Serialize i, Eq i, Ord i, Serialize a) =>
+handleCommand :: (Serialize i, Ord i) =>
     Command i a -> Peer -> KademliaInstance i a -> IO ()
 -- Simply answer a PING with a PONG
 handleCommand PING peer inst = send (handle inst) peer PONG
 -- Return a KBucket with the closest Nodes
-handleCommand (FIND_NODE id) peer inst = returnNodes peer id inst
+handleCommand (FIND_NODE nid) peer inst = returnNodes peer nid inst
 -- Insert the value into the values store and start the expiration process
 handleCommand (STORE key value) _ inst = do
     insertValue key value inst
@@ -331,12 +332,12 @@ handleCommand (FIND_VALUE key) peer inst = do
 handleCommand _ _ _ = return ()
 
 -- | Return a KBucket with the closest Nodes to a supplied Id
-returnNodes :: (Serialize i, Eq i, Ord i, Serialize a) =>
+returnNodes :: (Serialize i, Ord i) =>
     Peer -> i -> KademliaInstance i a -> IO ()
-returnNodes peer id (KI h (KS sTree _ _) _ _) = do
+returnNodes peer nid (KI h (KS sTree _ _) _ _) = do
     tree           <- atomically . readTVar $ sTree
     rndGen         <- newStdGen
-    let closest     = T.findClosest tree id 7
-    let randomNodes = T.pickupNotClosest tree id 7 (Just closest) rndGen
+    let closest     = T.findClosest tree nid 7
+    let randomNodes = T.pickupNotClosest tree nid 7 (Just closest) rndGen
     let nodes       = closest ++ randomNodes
-    liftIO $ send h peer (RETURN_NODES id nodes)
+    liftIO $ send h peer (RETURN_NODES nid nodes)
