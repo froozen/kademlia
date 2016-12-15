@@ -24,6 +24,7 @@ import           Test.QuickCheck           (Property)
 import           Test.QuickCheck.Monadic   (PropertyM, assert, monadicIO, run)
 
 import qualified Network.Kademlia          as K
+import           Network.Kademlia.Config   (k, kRand)
 import           Network.Kademlia.Instance (KademliaInstance (..), KademliaState (..))
 import qualified Network.Kademlia.Tree     as T
 import           Network.Kademlia.Types    (Node (..), Peer (..))
@@ -54,12 +55,12 @@ joinNetworkVerifier bucketThreshold idBunch = monadicIO $ do
 
 -- | Checks that nodes contain at least @k@ neighbours in their buckets
 joinCheck :: IdBunch IdType -> Property
-joinCheck = joinNetworkVerifier 7
+joinCheck = joinNetworkVerifier k
 
 -- | Checks that nodes from RETURN_NODES request were added to bucket: [CSL-258][CSL-260]
 -- Thus node should contain at least @k + k/2@ nodes.
 joinFullCheck :: IdBunch IdType -> Property
-joinFullCheck = joinNetworkVerifier 11
+joinFullCheck = joinNetworkVerifier (k + kRand k)
 
 -- | Make sure ID clashes are detected properly
 idClashCheck :: IdType -> IdType -> Property

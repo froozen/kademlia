@@ -112,22 +112,22 @@ anything to handle this.
 -}
 
 module Network.Kademlia
-    ( KademliaInstance
-    , KademliaConfig(..)
-    , create
-    , createL
-    , defaultConfig
-    , close
-    , I.lookup
-    , I.store
-    , I.lookupNode
-    , I.joinNetwork
-    , dumpPeers
-    , JoinResult(..)
-    , Serialize(..)
-    , Node(..)
-    , Peer(..)
-    ) where
+       ( KademliaInstance
+       , KademliaConfig(..)
+       , create
+       , createL
+       , defaultConfig
+       , close
+       , I.lookup
+       , I.store
+       , I.lookupNode
+       , I.joinNetwork
+       , dumpPeers
+       , JoinResult(..)
+       , Serialize(..)
+       , Node(..)
+       , Peer(..)
+       ) where
 
 import           Network.Kademlia.Config
 import           Network.Kademlia.Implementation as I

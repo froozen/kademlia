@@ -17,15 +17,16 @@ module Tree
        ) where
 
 
-import           Data.List              (sortBy)
-import           Data.Maybe             (isJust)
-import           System.Random          (mkStdGen)
-import           Test.QuickCheck        (Property, conjoin, counterexample, property)
+import           Data.List               (sortBy)
+import           Data.Maybe              (isJust)
+import           System.Random           (mkStdGen)
+import           Test.QuickCheck         (Property, conjoin, counterexample, property)
 
-import qualified Network.Kademlia.Tree  as T
-import           Network.Kademlia.Types (Node (..), Serialize (..), distance)
+import           Network.Kademlia.Config (k)
+import qualified Network.Kademlia.Tree   as T
+import           Network.Kademlia.Types  (Node (..), Serialize (..), distance)
 
-import           TestTypes              (IdType (..), NodeBunch (..))
+import           TestTypes               (IdType (..), NodeBunch (..))
 
 -- | Helper method for lookup checking
 lookupCheck :: (Serialize i, Eq i) => T.NodeTree i -> Node i -> Bool
@@ -64,7 +65,7 @@ splitCheck = withTree f
 bucketSizeCheck :: NodeBunch IdType -> IdType -> Bool
 bucketSizeCheck = withTree $ \tree _ -> T.fold foldingFunc True tree
     where foldingFunc _ False = False
-          foldingFunc b  _    = length b <= 7
+          foldingFunc b  _    = length b <= k
 
 -- | Make sure refreshed Nodes are actually refreshed
 refreshCheck :: NodeBunch IdType -> IdType -> Bool
@@ -85,12 +86,12 @@ findClosestCheck nid = withTree f
                   where prop node' = node' `elem` treeClosest
                         text node' = "Failed to find: " ++ show node'
 
-                 treeClosest = T.findClosest tree nid 7
+                 treeClosest = T.findClosest tree nid k
 
                  contained = filter contains nodes
                  contains node = isJust . T.lookup tree . nodeId $ node
 
-                 manualClosest = map fst . take 7 . sort $ packed
+                 manualClosest = map fst . take k . sort $ packed
                  packed = zip contained $ map distanceF contained
                  distanceF = distance nid . nodeId
                  sort = sortBy $ \(_, a) (_, b) -> compare a b
@@ -101,6 +102,6 @@ pickupNotClosestDifferentCheck nid = withTree verifyNotClosest
   where
     verifyNotClosest :: T.NodeTree IdType -> [Node IdType] -> Property
     verifyNotClosest tree _ =
-        let closest    = T.findClosest tree nid 7
-            notClosest = T.pickupNotClosest tree nid 7 Nothing (mkStdGen 42)
+        let closest    = T.findClosest tree nid k
+            notClosest = T.pickupNotClosest tree nid (fromIntegral k) Nothing (mkStdGen 42)
         in property $ all (`notElem` notClosest) closest

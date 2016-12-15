@@ -22,16 +22,17 @@ module Network.Kademlia.Tree
        , fold
        ) where
 
-import           Prelude                hiding (lookup)
+import           Prelude                 hiding (lookup)
 
-import           Control.Error.Util     ((?:))
-import           Control.Monad.Random   (evalRand)
-import qualified Data.List              as L (delete, find, genericTake)
-import           System.Random          (StdGen)
-import           System.Random.Shuffle  (shuffleM)
+import           Control.Error.Util      ((?:))
+import           Control.Monad.Random    (evalRand)
+import qualified Data.List               as L (delete, find, genericTake)
+import           System.Random           (StdGen)
+import           System.Random.Shuffle   (shuffleM)
 
-import           Network.Kademlia.Types (ByteStruct, Node (..), Serialize (..),
-                                         fromByteStruct, sortByDistanceTo, toByteStruct)
+import           Network.Kademlia.Config (k, kRand)
+import           Network.Kademlia.Types  (ByteStruct, Node (..), Serialize (..),
+                                          fromByteStruct, sortByDistanceTo, toByteStruct)
 
 data NodeTree i = NodeTree ByteStruct (NodeTreeElem i)
 
@@ -161,7 +162,7 @@ insert tree node = if applyAt tree (nodeId node) needsSplit
             in  -- A new node will be inserted
                 node `notElem` map fst nodes &&
                 -- The bucket is full
-                length nodes >= 7 &&
+                length nodes >= k &&
                 -- The bucket may be split
                 (depth < 5 || valid) && depth <= maxDepth
 
@@ -169,7 +170,7 @@ insert tree node = if applyAt tree (nodeId node) needsSplit
             -- Refresh an already existing node
             | node `elem` map fst nodes = refresh node b
             -- Simply insert the node, if the bucket isn't full
-            | length nodes < 7 = Bucket ((node, 0):nodes, cache)
+            | length nodes < k = Bucket ((node, 0):nodes, cache)
             -- Move the node to the first spot, if it's already cached
             | node `elem` cache = Bucket (nodes, node : L.delete node cache)
             -- Cache the node and drop older ones, if necessary
@@ -208,7 +209,7 @@ pickupNotClosest tree nodeId n maybeClosest randGen =
     let nClosest      = maybeClosest ?: findClosest tree nodeId (fromIntegral n)
         treeList      = toList tree
         notChosen     = filter (`notElem` nClosest) treeList
-        n'            = uncurry (+) $ n `divMod` 2
+        n'            = kRand $ fromIntegral n
         shuffledNodes = evalRand (shuffleM notChosen) randGen
     in L.genericTake n' shuffledNodes
 

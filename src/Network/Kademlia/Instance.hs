@@ -33,7 +33,7 @@ import qualified Data.Map                    as M hiding (Map)
 import           Data.Maybe                  (fromJust, isJust)
 import           System.Random               (newStdGen)
 
-import           Network.Kademlia.Config     (KademliaConfig (..), defaultConfig)
+import           Network.Kademlia.Config     (KademliaConfig (..), defaultConfig, k)
 import           Network.Kademlia.Networking (KademliaHandle (..), expect, logError',
                                               send, startRecvProcess)
 import           Network.Kademlia.ReplyQueue (Reply (..), ReplyQueue (timeoutChan),
@@ -238,7 +238,7 @@ pingProcess (KI h (KS sTree _) _ cfg) chan = forever . (`catch` logError' h) $ d
         send h (peer node) PING
         expect h (RR [R_PONG] (nodeId node)) $ chan
 
--- | Store all values stored in the node in the 7 closest known nodes every hour
+-- | Store all values stored in the node in the 'k' closest known nodes every hour
 spreadValueProcess :: (Serialize i)
                    => KademliaInstance i a
                    -> IO ()
@@ -255,7 +255,7 @@ spreadValueProcess (KI h (KS sTree sValues) _ cfg) = forever . (`catch` logError
 
     where
           sendRequests tree key val = do
-            let closest = T.findClosest tree key 7
+            let closest = T.findClosest tree key k
             forM_ closest $ \node -> send h (peer node) (STORE key val)
 
           mapMWithKey :: (k -> v -> IO a) -> Map k v -> IO [a]
@@ -302,7 +302,7 @@ returnNodes :: (Serialize i, Ord i) =>
 returnNodes peer nid (KI h (KS sTree _) _ _) = do
     tree           <- atomically . readTVar $ sTree
     rndGen         <- newStdGen
-    let closest     = T.findClosest tree nid 7
-    let randomNodes = T.pickupNotClosest tree nid 7 (Just closest) rndGen
+    let closest     = T.findClosest tree nid k
+    let randomNodes = T.pickupNotClosest tree nid (fromIntegral k) (Just closest) rndGen
     let nodes       = closest ++ randomNodes
     liftIO $ send h peer (RETURN_NODES nid nodes)

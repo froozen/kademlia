@@ -1,7 +1,9 @@
 module Network.Kademlia.Config
-    ( KademliaConfig(..)
-    , defaultConfig
-    ) where
+       ( KademliaConfig(..)
+       , defaultConfig
+       , k
+       , kRand
+       ) where
 
 import           Network.Kademlia.Utils (hour, minute)
 
@@ -25,3 +27,15 @@ defaultConfig = KademliaConfig
     , msgSizeLimit   = 1200
     , storeValues    = True
     }
+
+-- | @k@ nearest heighbours for query. Constant from paper.
+--
+-- [CSL-310]: This constant is not in 'KademliaConfig' currently because it's usages
+-- are not convenient and required in many places. If we want to make it configurable
+-- we can implement this as a /compile-time/ constant or put in config in /runtime/.
+k :: Int
+k = 7
+
+-- | Additional random nodes. See [CSL-260].
+kRand :: Int -> Int
+kRand k' = uncurry (+) $ k' `divMod` 2

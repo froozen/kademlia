@@ -21,11 +21,13 @@ module Network.Kademlia.Types
        , toPeer
        ) where
 
-import           Data.Bits       (setBit, testBit, zeroBits)
-import qualified Data.ByteString as B (ByteString, foldr, pack)
-import           Data.Function   (on)
-import           Data.List       (sortBy)
-import           Network.Socket  (PortNumber, SockAddr (..), inet_ntoa)
+import           Data.Bits               (setBit, testBit, zeroBits)
+import qualified Data.ByteString         as B (ByteString, foldr, pack)
+import           Data.Function           (on)
+import           Data.List               (sortBy)
+import           Network.Socket          (PortNumber, SockAddr (..), inet_ntoa)
+
+import           Network.Kademlia.Config (k)
 
 -- | Representation of an UDP peer
 data Peer = Peer {
@@ -64,7 +66,7 @@ type ByteStruct = [Bool]
 -- | Converts a Serialize into a ByteStruct
 toByteStruct :: (Serialize a) => a -> ByteStruct
 toByteStruct s = B.foldr (\w bits -> convert w ++ bits) [] $ toBS s
-    where convert w = foldr (\i bits -> testBit w i : bits) [] [0..7]
+    where convert w = foldr (\i bits -> testBit w i : bits) [] [0..k]
 
 -- | Convert a ByteStruct back to its ByteString form
 fromByteStruct :: (Serialize a) => ByteStruct -> a
@@ -72,12 +74,12 @@ fromByteStruct bs = case fromBS s of
                     (Right (converted, _)) -> converted
                     (Left err) -> error $ "Failed to convert from ByteStruct: " ++ err
     where s = B.pack . foldr (\i ws -> createWord i : ws) [] $ indexes
-          indexes = [0..(length bs `div` 8) -1]
-          createWord i = let pos = i * 8
-                         in foldr changeBit zeroBits [pos..pos+7]
+          indexes = [0..(length bs `div` (k + 1)) - 1]
+          createWord i = let pos = i * (k + 1)
+                         in foldr changeBit zeroBits [pos..pos + k]
 
           changeBit i w = if bs !! i
-                then setBit w (i `mod` 8)
+                then setBit w (i `mod` (k + 1))
                 else w
 
 -- Calculate the distance between two Ids, as specified in the Kademlia paper

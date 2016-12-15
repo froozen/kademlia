@@ -26,7 +26,7 @@ import           Control.Monad.Trans.State   (StateT, evalStateT, gets, modify)
 import           Data.List                   (delete, find, (\\))
 import           Data.Maybe                  (fromJust)
 
-import           Network.Kademlia.Config     (KademliaConfig (..))
+import           Network.Kademlia.Config     (KademliaConfig (..), k)
 import           Network.Kademlia.Instance   (KademliaInstance (..), KademliaState (..),
                                               insertNode)
 import           Network.Kademlia.Networking (expect, send)
@@ -118,8 +118,8 @@ store inst key val = runLookup go inst key
 
             unless (null polled) $ do
                 let h = handle inst
-                    -- Don't select more than 7 peers
-                    peerNum = if length polled > 7 then 7 else length polled
+                    -- Don't select more than k peers
+                    peerNum = if length polled > k then k else length polled
                     -- Select the peers closest to the key
                     storePeers =
                         map peer . take peerNum . sortByDistanceTo polled $ key
@@ -313,7 +313,7 @@ continueLookup nodes signalAction continue end = do
     polled  <- gets polled
 
     -- Pick the k closest known nodes, that haven't been polled yet
-    let newKnown = take 7 . filter (`notElem` polled) $ nodes ++ known
+    let newKnown = take k . filter (`notElem` polled) $ nodes ++ known
 
     -- If there the k closest nodes haven't been polled yet
     polledNeighbours <- closestPolled newKnown
@@ -347,8 +347,8 @@ continueLookup nodes signalAction continue end = do
             cid    <- gets targetId
             polled <- gets polled
 
-            -- Return the 7 closest nodes, the lookup had contact with
-            return . take 7 . sortByDistanceTo (known ++ polled) $ cid
+            -- Return the k closest nodes, the lookup had contact with
+            return . take k . sortByDistanceTo (known ++ polled) $ cid
 
 -- Send a signal to a node
 sendSignal :: Command i a
