@@ -131,7 +131,7 @@ store inst key val = runLookup go inst key
 
 -- | The different possibel results of joinNetwork
 data JoinResult
-    = JoinSucces
+    = JoinSuccess
     | NodeDown
     | IDClash
     | NodeBanned
@@ -143,7 +143,6 @@ joinNetwork :: (Serialize i, Serialize a, Ord i) => KademliaInstance i a
 joinNetwork inst node = ownId >>= runLookup go inst
     where go = do
             -- If node is banned, quit
-            banned <- liftIO $ isNodeBanned inst $ nodeId node
             if banned
                 then return NodeBanned
                 else do
@@ -177,7 +176,7 @@ joinNetwork inst node = ownId >>= runLookup go inst
           sendS sendNode = liftIO ownId >>= flip sendSignal sendNode . FIND_NODE
 
           -- Return a success, when the operation finished cleanly
-          finish = return JoinSucces
+          finish = return JoinSuccess
 
 -- | Lookup the Node corresponding to the supplied ID
 lookupNode :: forall i a .
