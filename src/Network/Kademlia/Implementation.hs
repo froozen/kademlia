@@ -143,6 +143,7 @@ joinNetwork :: (Serialize i, Serialize a, Ord i) => KademliaInstance i a
 joinNetwork inst node = ownId >>= runLookup go inst
     where go = do
             -- If node is banned, quit
+            banned <- liftIO $ isNodeBanned inst $ nodeId node
             if banned
                 then return NodeBanned
                 else do
