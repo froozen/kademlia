@@ -77,10 +77,8 @@ newInstance nid cfg handle = do
 
 -- | Insert a Node into the NodeTree
 insertNode :: (Serialize i, Ord i) => KademliaInstance i a -> Node i -> IO ()
-insertNode (KI _ (KS sTree banned _) _ _) node = do
-    ban <- atomically $ readTVar banned
-    let isBanned = M.member (nodeId node) ban
-    unless isBanned $ atomically $ do
+insertNode inst@(KI _ (KS sTree _ _) _ _) node = do
+    unlessM (isNodeBanned inst $ nodeId node) $ atomically $ do
         tree <- readTVar sTree
         writeTVar sTree . T.insert tree $ node
 
