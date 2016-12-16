@@ -123,6 +123,9 @@ module Network.Kademlia
        , I.lookupNode
        , I.joinNetwork
        , dumpPeers
+       , banNode
+       , isNodeBanned
+       , mkTimer
        , JoinResult(..)
        , Serialize(..)
        , Node(..)
@@ -135,6 +138,7 @@ import           Network.Kademlia.Instance
 import           Network.Kademlia.Networking
 import           Network.Kademlia.ReplyQueue
 import           Network.Kademlia.Types
+import           Network.Kademlia.Utils
 import           Prelude                         hiding (lookup)
 
 -- | Create a new KademliaInstance corresponding to a given Id on a given port

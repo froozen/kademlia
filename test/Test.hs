@@ -12,11 +12,11 @@ import           Test.Tasty            (TestTree, defaultMain, testGroup)
 import           Test.Tasty.HUnit      as HU
 import           Test.Tasty.QuickCheck as QC
 
-import           Implementation        (idClashCheck, joinCheck, joinFullCheck,
-                                        lookupNodesCheck, nodeDownCheck,
+import           Implementation        (idClashCheck, joinBannedCheck, joinCheck,
+                                        joinFullCheck, lookupNodesCheck, nodeDownCheck,
                                         storeAndLookupCheck)
-import           Instance              (handlesPingCheck, storeAndFindValueCheck,
-                                        trackingKnownPeersCheck)
+import           Instance              (banNodeCheck, handlesPingCheck, isNodeBannedCheck,
+                                        storeAndFindValueCheck, trackingKnownPeersCheck)
 import           Networking            (expectCheck, sendCheck)
 import           Protocol              (lengthCheck, parseCheck)
 import           ReplyQueue            (removedCheck, repliesCheck)
@@ -90,6 +90,10 @@ instanceChecks = testGroup "Network.Kademlia.Instance" [
          storeAndFindValueCheck
     , QC.testProperty "Peers are put into the tree on first encounter"
          trackingKnownPeersCheck
+    , HU.testCase "Setting ban and checking ban status works"
+         isNodeBannedCheck
+    , HU.testCase "Messages from banned node are ignored"
+         banNodeCheck
     ]
 
 replyQueueChecks :: TestTree
@@ -108,6 +112,8 @@ implementationChecks = testGroup "Network.Kademlia.Implementation" [
          joinFullCheck
     , QC.testProperty "ID clashes are detected"
          idClashCheck
+    , QC.testProperty "Join network to banned node works"
+         joinBannedCheck
     , QC.testProperty "Storing and looking up values works"
         storeAndLookupCheck
     , QC.testProperty "Looking up Nodes works"
