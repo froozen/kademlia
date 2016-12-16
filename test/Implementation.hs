@@ -11,6 +11,7 @@ module Implementation
        , joinFullCheck
        , lookupNodesCheck
        , nodeDownCheck
+       , joinBannedCheck
        , storeAndLookupCheck
        ) where
 
@@ -94,6 +95,24 @@ nodeDownCheck = do
 
     where idA = IT . C.pack $ "hello"
           idB = IT . C.pack $ "herro"
+
+
+-- | Make sure banNode works correctly
+joinBannedCheck :: IdType -> IdType -> Property
+joinBannedCheck idA idB = monadicIO $ do
+    let entryNode = Node (Peer "127.0.0.1" 1124) idB
+
+    joinResult <- run $ do
+        inst <- K.create 1123 idA :: IO (KademliaInstance IdType String)
+
+        K.banNode inst idB $ return True
+        joinResult <- K.joinNetwork inst entryNode
+
+        K.close inst
+
+        return joinResult
+
+    assert $ joinResult == K.NodeBanned
 
 storeAndLookupCheck :: IdBunch IdType -> IdBunch IdType -> Property
 storeAndLookupCheck ids keys = monadicIO $ do

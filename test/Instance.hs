@@ -9,22 +9,27 @@ module Instance
        ( handlesPingCheck
        , storeAndFindValueCheck
        , trackingKnownPeersCheck
+       , isNodeBannedCheck
+       , banNodeCheck
        ) where
 
 
-import           Control.Concurrent.Chan     (readChan)
-import           Control.Monad               (liftM2)
+import           Control.Concurrent          (forkIO, threadDelay)
+import           Control.Concurrent.Chan     (readChan, writeChan)
+import           Control.Concurrent.STM      (atomically, newTVarIO, readTVarIO,
+                                              writeTVar)
+import           Control.Monad               (liftM2, void)
 import qualified Data.ByteString.Char8       as C
 import           Data.Maybe                  (fromJust, isJust)
 
-import           Test.HUnit                  (Assertion, assertEqual)
+import           Test.HUnit                  (Assertion, assertEqual, assertFailure)
 import           Test.QuickCheck             (Property, arbitrary, counterexample)
 import           Test.QuickCheck.Monadic     (PropertyM, assert, monadicIO, monitor, pick,
                                               run)
 
 import           Network.Kademlia            (close, create)
-import           Network.Kademlia.Instance   (KademliaInstance (..), dumpPeers,
-                                              lookupNode)
+import           Network.Kademlia.Instance   (KademliaInstance (..), banNode, dumpPeers,
+                                              isNodeBanned, lookupNode)
 import           Network.Kademlia.Networking (KademliaHandle (..), closeK, openOn, send,
                                               startRecvProcess)
 import           Network.Kademlia.ReplyQueue (Reply (..), ReplyQueue (..),
@@ -139,5 +144,66 @@ trackingKnownPeersCheck = monadicIO $ do
 
     nodes <- run . dumpPeers $ kiB
     assert $ nodes == [fromJust node]
+
+    return ()
+
+-- | Make sure `isNodeBanned` works correctly
+isNodeBannedCheck :: Assertion
+isNodeBannedCheck = do
+    inst <- create 1123 idA :: IO (KademliaInstance IdType String)
+    let check msg ans = do
+            ban <- isNodeBanned inst idB
+            assertEqual msg ban ans
+
+    check "Initial" False
+
+    banNode inst idB $ return True
+    check "Plain ban set" True
+
+    banValue <- newTVarIO False
+    banNode inst idB $ readTVarIO banValue
+    check "Reset ban to False" False
+
+    atomically $ writeTVar banValue True
+    check "Change 'banned' value via TVar" False
+
+    close inst
+
+    where idA = IT . C.pack $ "hello"
+          idB = IT . C.pack $ "herro"
+
+-- | Messages from banned node are ignored
+banNodeCheck :: Assertion
+banNodeCheck = do
+    let (_, pB) = peers
+
+    let (Right (idA, _)) = fromBS . C.replicate 32 $ 'a'
+                           :: Either String (IdType, C.ByteString)
+    let (Right (idB, _)) = fromBS . C.replicate 32 $ 'b'
+                           :: Either String (IdType, C.ByteString)
+
+    rq <- emptyReplyQueue
+
+    khA <- openOn "1122" idA rq :: IO (KademliaHandle IdType String)
+    kiB <- create 1123 idB   :: IO (KademliaInstance IdType String)
+
+    banNode kiB idA $ return True
+    startRecvProcess khA
+
+    send khA pB PING
+
+    -- if no message received for long enough, put OK message
+    void . forkIO $ do
+        threadDelay 10000
+        writeChan (timeoutChan rq) Closed
+
+    res <- readChan . timeoutChan $ rq :: IO (Reply IdType String)
+
+    closeK khA
+    close kiB
+
+    case res of
+        Closed -> return ()
+        _     -> assertFailure "Message from banned node isn't ignored"
 
     return ()

@@ -21,6 +21,7 @@ import           Prelude                     hiding (lookup)
 import           Control.Concurrent.Chan     (Chan, newChan, readChan)
 import           Control.Concurrent.STM      (atomically, readTVar)
 import           Control.Monad               (forM_, unless)
+import           Control.Monad.Extra         (unlessM)
 import           Control.Monad.IO.Class      (liftIO)
 import           Control.Monad.Trans.State   (StateT, evalStateT, gets, modify)
 import           Data.List                   (delete, find, (\\))
@@ -129,17 +130,27 @@ store inst key val = runLookup go inst key
                     \storePeer -> liftIO . send h storePeer . STORE key $ val
 
 -- | The different possibel results of joinNetwork
-data JoinResult = JoinSucces | NodeDown | IDClash deriving (Eq, Ord, Show)
+data JoinResult
+    = JoinSucces
+    | NodeDown
+    | IDClash
+    | NodeBanned
+    deriving (Eq, Ord, Show)
 
 -- | Make a KademliaInstance join the network a supplied Node is in
 joinNetwork :: (Serialize i, Serialize a, Ord i) => KademliaInstance i a
             -> Node i -> IO JoinResult
 joinNetwork inst node = ownId >>= runLookup go inst
     where go = do
-            -- Poll the supplied node
-            sendS node
-            -- Run a normal lookup from thereon out
-            waitForReply nodeDown checkSignal
+            -- If node is banned, quit
+            banned <- liftIO $ isNodeBanned inst $ nodeId node
+            if banned
+                then return NodeBanned
+                else do
+                    -- Poll the supplied node
+                    sendS node
+                    -- Run a normal lookup from thereon out
+                    waitForReply nodeDown checkSignal
 
           -- No answer to the first signal means, that that Node is down
           nodeDown = return NodeDown
@@ -269,7 +280,7 @@ waitForReply cancel onSignal = do
 
             if banned
                 -- Ignore message from banned node, wait for another message
-                then waitForReply cancel onSignal
+                then cancel
                 else do
                     -- Insert the node into the tree, as it might be a new one or it
                     -- would have to be refreshed
@@ -285,30 +296,24 @@ waitForReply cancel onSignal = do
         Timeout registration -> do
             let nid = replyOrigin registration
 
-            banned <- liftIO $ isNodeBanned inst nid
-            if banned
-                -- Ignore message from banned node, wait for another message
+            -- Find the node corresponding to the id
+            --
+            -- ReplyQueue guarantees us, that it will be in polled, therefore
+            -- we can use fromJust
+            let node = fromJust . find (\n -> nodeId n == nid) $ polled
 
+            -- Remove every trace of the node's existance
+            modify $ \s -> s {
+                  pending = delete node sPending
+                , known = delete node known
+                , polled = delete node polled
+                }
+
+            -- Continue, if there still are pending responses
+            updatedPending <- gets pending
+            if not . null $ updatedPending
                 then waitForReply cancel onSignal
-                else do
-                    -- Find the node corresponding to the id
-                    --
-                    -- ReplyQueue guarantees us, that it will be in polled, therefore
-                    -- we can use fromJust
-                    let node = fromJust . find (\n -> nodeId n == nid) $ polled
-
-                    -- Remove every trace of the node's existance
-                    modify $ \s -> s {
-                        pending = delete node sPending
-                        , known = delete node known
-                        , polled = delete node polled
-                        }
-
-                    -- Continue, if there still are pending responses
-                    updatedPending <- gets pending
-                    if not . null $ updatedPending
-                        then waitForReply cancel onSignal
-                        else cancel
+                else cancel
 
         Closed -> cancel
 
@@ -363,26 +368,31 @@ continueLookup nodes signalAction continue end = do
             return . take 7 . sortByDistanceTo (known ++ polled) $ cid
 
 -- Send a signal to a node
-sendSignal :: Command i a
+sendSignal :: Ord i
+           => Command i a
            -> Node i
            -> LookupM i a ()
 sendSignal cmd node = do
-    h <- fmap handle . gets $ inst
-    chan <- gets replyChan
-    polled <- gets polled
-    pending <- gets pending
+    inst <- gets inst
 
-    -- Send the signal
-    liftIO . send h (peer node) $ cmd
+    -- Not interested in results from banned node
+    unlessM (liftIO $ isNodeBanned inst $ nodeId node) $ do
+        let h = handle inst
+        chan <- gets replyChan
+        polled <- gets polled
+        pending <- gets pending
 
-    -- Expect an appropriate reply to the command
-    liftIO . expect h regs $ chan
+        -- Send the signal
+        liftIO . send h (peer node) $ cmd
 
-    -- Mark the node as polled and pending
-    modify $ \s -> s {
-          polled = node:polled
-        , pending = node:pending
-        }
+        -- Expect an appropriate reply to the command
+        liftIO . expect h regs $ chan
+
+        -- Mark the node as polled and pending
+        modify $ \s -> s {
+              polled = node:polled
+            , pending = node:pending
+            }
 
     -- Determine the appropriate ReplyRegistrations to the command
     where regs = case cmd of

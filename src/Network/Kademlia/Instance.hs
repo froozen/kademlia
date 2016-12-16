@@ -238,9 +238,10 @@ backgroundProcess inst@(KI h _ _ _) chan threadIds = do
     logInfo h $ "Register chan: reply " ++ show reply
 
     case reply of
-        Answer sig -> do
-            handleAnswer sig `catch` logError' h
-            repeatBP
+        Answer sig@(Signal (Node _ nid) _) -> do
+            unlessM (isNodeBanned inst nid) $ do
+                handleAnswer sig `catch` logError' h
+                repeatBP
 
         -- Kill all other processes and stop on Closed
         Closed -> do
@@ -252,13 +253,14 @@ backgroundProcess inst@(KI h _ _ _) chan threadIds = do
         _ -> logInfo h "-- unknown reply" >> repeatBP
   where
     repeatBP = backgroundProcess inst chan threadIds
-    handleAnswer sig = do
-        let node = source sig
-        -- Handle the signal
-        handleCommand (command sig) (peer node) inst
-        -- Insert the node into the tree, if it's allready known, it will
-        -- be refreshed
-        insertNode inst node
+    handleAnswer sig@(Signal (Node _ nid) _) =
+        unlessM (isNodeBanned inst nid) $ do
+            let node = source sig
+            -- Handle the signal
+            handleCommand (command sig) (peer node) inst
+            -- Insert the node into the tree, if it's allready known, it will
+            -- be refreshed
+            insertNode inst node
 
 -- | Ping all known nodes every five minutes to make sure they are still present
 pingProcess :: KademliaInstance i a
