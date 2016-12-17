@@ -265,7 +265,7 @@ idMatches :: (Eq i) => i -> Node i -> Bool
 idMatches nid node = nid == nodeId node
 
 -- | Turn the NodeTree into a list of buckets, ordered by distance to origin node
-toView :: Serialize i => NodeTree i -> [[Node i]]
+toView :: NodeTree i -> [[Node i]]
 toView (NodeTree bs treeElems) = go bs treeElems []
     where -- If the bit is 0, go left, then right
           go (False:is) (Split left right) = go is left . go is right
@@ -276,9 +276,7 @@ toView (NodeTree bs treeElems) = go bs treeElems []
 
 -- | Turn the NodeTree into a list of nodes
 toList :: NodeTree i -> [Node i]
-toList (NodeTree _ treeElems) = go treeElems
-    where go (Split left right) = go left ++ go right
-          go (Bucket b)         = map fst . fst $ b
+toList = concat . toView
 
 -- | Fold over the buckets
 fold :: ([Node i] -> a -> a) -> a -> NodeTree i -> a
