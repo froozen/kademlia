@@ -18,6 +18,7 @@ module Network.Kademlia.Tree
        , pickupNotClosest
        , findClosest
        , extractId
+       , toView
        , toList
        , fold
        ) where
@@ -262,6 +263,16 @@ extractId (NodeTree nid _) = fromByteStruct nid
 -- | Helper function used for KBucket manipulation
 idMatches :: (Eq i) => i -> Node i -> Bool
 idMatches nid node = nid == nodeId node
+
+-- | Turn the NodeTree into a list of buckets, ordered by distance to origin node
+toView :: Serialize i => NodeTree i -> [[Node i]]
+toView (NodeTree bs treeElems) = go bs treeElems []
+    where -- If the bit is 0, go left, then right
+          go (False:is) (Split left right) = go is left . go is right
+          -- Else go right first
+          go (True:is)  (Split left right) = go is right . go is left
+          go _          (Split _    _    ) = error "toView: unexpected Split"
+          go _          (Bucket (b, _))    = (map fst b :)
 
 -- | Turn the NodeTree into a list of nodes
 toList :: NodeTree i -> [Node i]

@@ -123,6 +123,7 @@ module Network.Kademlia
        , I.store
        , I.lookupNode
        , I.joinNetwork
+       , viewBuckets
        , dumpPeers
        , banNode
        , isNodeBanned

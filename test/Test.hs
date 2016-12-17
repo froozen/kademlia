@@ -23,7 +23,7 @@ import           Protocol              (lengthCheck, parseCheck)
 import           ReplyQueue            (removedCheck, repliesCheck)
 import           Tree                  (bucketSizeCheck, deleteCheck, findClosestCheck,
                                         insertCheck, pickupNotClosestDifferentCheck,
-                                        refreshCheck, splitCheck)
+                                        refreshCheck, splitCheck, viewCheck)
 import           Types                 (fromByteStructCheck, toByteStructCheck)
 
 main :: IO ()
@@ -83,6 +83,8 @@ treeChecks = testGroup "Network.Kademlia.Tree" [
          findClosestCheck
     , QC.testProperty "Not closest doesn't contain closest"
          pickupNotClosestDifferentCheck
+    , QC.testProperty "Getting view of tree works correctly"
+         viewCheck
     ]
 
 instanceChecks :: TestTree

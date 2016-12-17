@@ -37,7 +37,7 @@ newtype IdType = IT
 
 -- Custom show instance
 instance Show IdType where
-    show = show . C.unpack . getBS
+    show = show . getBS
 
 -- A simple 5-byte ByteString
 instance Serialize IdType where

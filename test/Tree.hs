@@ -15,11 +15,14 @@ module Tree
        , pickupNotClosestDifferentCheck
        , refreshCheck
        , splitCheck
+       , viewCheck
        ) where
 
 
-import           Data.List               (sortBy)
+import           Data.Function           (on)
+import           Data.List               (sort, sortBy)
 import           Data.Maybe              (isJust)
+import qualified Data.Set                as S
 import           System.Random           (mkStdGen)
 import           Test.QuickCheck         (Property, conjoin, counterexample, property)
 
@@ -66,7 +69,7 @@ splitCheck = withTree f
 bucketSizeCheck :: NodeBunch IdType -> IdType -> Bool
 bucketSizeCheck = withTree $ \tree _ -> T.fold foldingFunc True tree
     where foldingFunc _ False = False
-          foldingFunc b  _    = length b <= k
+          foldingFunc b _     = length b <= k
 
 -- | Make sure refreshed Nodes are actually refreshed
 refreshCheck :: NodeBunch IdType -> IdType -> Bool
@@ -92,10 +95,10 @@ findClosestCheck nid = withTree f
                  contained = filter contains nodes
                  contains node = isJust . T.lookup tree . nodeId $ node
 
-                 manualClosest = map fst . take k . sort $ packed
+                 manualClosest = map fst . take k . sort' $ packed
                  packed = zip contained $ map distanceF contained
                  distanceF = distance nid . nodeId
-                 sort = sortBy $ \(_, a) (_, b) -> compare a b
+                 sort' = sortBy $ \(_, a) (_, b) -> compare a b
 
 -- | Check that 'T.pickupNotClosest' doesn't return closest nodes.
 pickupNotClosestDifferentCheck :: IdType -> NodeBunch IdType -> IdType -> Property
@@ -106,3 +109,18 @@ pickupNotClosestDifferentCheck nid = withTree verifyNotClosest
         let closest    = T.findClosest tree nid k
             notClosest = T.pickupNotClosest tree nid (fromIntegral k) Nothing (mkStdGen 42)
         in property $ all (`notElem` notClosest) closest
+
+-- | Make sure `toView` represents tree correctly
+viewCheck :: NodeBunch IdType -> IdType -> Bool
+viewCheck = withTree $
+    \tree nodes ->
+        let originId  = T.extractId tree
+            view      = T.toView tree
+            -- distance to this node increases from bucket to bucket
+        in  increases [ dist | bucket <- view
+                             , dist   <- sort $ map (distance originId . nodeId) bucket ]
+            -- and view contains all nodes from tree
+        &&  sameElements nodes (concat view)
+  where
+    increases x  = x == sort x
+    sameElements = (==) `on` S.fromList

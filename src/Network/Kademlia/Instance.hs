@@ -23,12 +23,13 @@ module Network.Kademlia.Instance
     , takeSnapshot
     , takeSnapshot'
     , restoreInstance
+    , viewBuckets
     ) where
 
 import           Control.Concurrent          (ThreadId, forkIO, killThread, myThreadId)
 import           Control.Concurrent.Chan     (Chan, readChan)
 import           Control.Concurrent.STM      (TVar, atomically, modifyTVar, newTVar,
-                                              readTVar, writeTVar)
+                                              readTVar, readTVarIO, writeTVar)
 import           Control.Exception           (catch)
 import           Control.Monad               (forM_, forever, forever, unless, void, when)
 import           Control.Monad.Extra         (unlessM)
@@ -165,6 +166,10 @@ banNode :: (Serialize i, Ord i) => KademliaInstance i a -> i -> BanState -> IO (
 banNode (KI _ (KS sTree banned _) _ _) nid ban = atomically $ do
     modifyTVar banned $ M.insert nid ban
     modifyTVar sTree $ \t -> T.delete t nid
+
+-- | Shows stored buckets, ordered by distance to this node
+viewBuckets :: Serialize i => KademliaInstance i a -> IO [[Node i]]
+viewBuckets (KI _ (KS sTree _ _) _ _) = T.toView <$> readTVarIO sTree
 
 -- | Start the background process for a KademliaInstance
 start :: (Show i, Serialize i, Ord i, Serialize a, Eq a) =>
