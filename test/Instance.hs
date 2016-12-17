@@ -11,33 +11,41 @@ module Instance
        , trackingKnownPeersCheck
        , isNodeBannedCheck
        , banNodeCheck
+       , snapshotCheck
        ) where
 
 
 import           Control.Concurrent          (forkIO, threadDelay)
 import           Control.Concurrent.Chan     (readChan, writeChan)
-import           Control.Concurrent.STM      (atomically, newTVarIO, readTVarIO,
-                                              writeTVar)
 import           Control.Monad               (liftM2, void)
+import           Data.Binary                 (decode, encode)
 import qualified Data.ByteString.Char8       as C
+import           Data.Function               (on)
+import qualified Data.Map                    as M
 import           Data.Maybe                  (fromJust, isJust)
 
+import           Data.List                   (sort)
 import           Test.HUnit                  (Assertion, assertEqual, assertFailure)
-import           Test.QuickCheck             (Property, arbitrary, counterexample)
+import           Test.QuickCheck             (Property, arbitrary, conjoin,
+                                              counterexample, (===))
 import           Test.QuickCheck.Monadic     (PropertyM, assert, monadicIO, monitor, pick,
                                               run)
 
 import           Network.Kademlia            (close, create)
-import           Network.Kademlia.Instance   (KademliaInstance (..), banNode, dumpPeers,
+import           Network.Kademlia.Instance   (BanState, BanState (..),
+                                              KademliaInstance (..),
+                                              KademliaSnapshot (..), banNode, dumpPeers,
                                               isNodeBanned, lookupNode)
 import           Network.Kademlia.Networking (KademliaHandle (..), closeK, openOn, send,
                                               startRecvProcess)
 import           Network.Kademlia.ReplyQueue (Reply (..), ReplyQueue (..),
                                               emptyReplyQueue)
+import qualified Network.Kademlia.Tree       as T
 import           Network.Kademlia.Types      (Command (..), Node (..), Peer (..),
                                               Serialize (..), Signal (..), command)
 
-import           TestTypes                   (IdType (..))
+import           TestTypes                   (IdType (..), NodeBunch (..))
+import           Tree                        (withTree)
 
 -- | The default set of peers
 peers :: (Peer, Peer)
@@ -157,15 +165,11 @@ isNodeBannedCheck = do
 
     check "Initial" False
 
-    banNode inst idB $ return True
+    banNode inst idB $ BanForever
     check "Plain ban set" True
 
-    banValue <- newTVarIO False
-    banNode inst idB $ readTVarIO banValue
+    banNode inst idB $ NoBan
     check "Reset ban to False" False
-
-    atomically $ writeTVar banValue True
-    check "Change 'banned' value via TVar" False
 
     close inst
 
@@ -187,7 +191,7 @@ banNodeCheck = do
     khA <- openOn "1122" idA rq :: IO (KademliaHandle IdType String)
     kiB <- create 1123 idB   :: IO (KademliaInstance IdType String)
 
-    banNode kiB idA $ return True
+    banNode kiB idA $ BanForever
     startRecvProcess khA
 
     send khA pB PING
@@ -207,3 +211,14 @@ banNodeCheck = do
         _     -> assertFailure "Message from banned node isn't ignored"
 
     return ()
+
+-- Snapshot is serialized and deserealised well
+snapshotCheck :: NodeBunch IdType -> IdType -> [BanState] -> Property
+snapshotCheck = withTree $
+    \tree nodes bans ->
+        let banned = M.fromList $ zip (map nodeId nodes) bans
+            sp     = KSP tree banned
+            sp'    = decode . encode $ sp
+        in  conjoin [ ((===) `on` spBanned) sp sp'
+                    , ((===) `on` sort . T.toList . spTree) sp sp'
+                    ]

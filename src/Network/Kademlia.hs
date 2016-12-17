@@ -114,6 +114,7 @@ anything to handle this.
 module Network.Kademlia
        ( KademliaInstance
        , KademliaConfig(..)
+       , KademliaSnapshot
        , create
        , createL
        , defaultConfig
@@ -125,7 +126,8 @@ module Network.Kademlia
        , dumpPeers
        , banNode
        , isNodeBanned
-       , mkTimer
+       , takeSnapshot
+       , restoreInstance
        , JoinResult(..)
        , Serialize(..)
        , Node(..)
@@ -138,7 +140,6 @@ import           Network.Kademlia.Instance
 import           Network.Kademlia.Networking
 import           Network.Kademlia.ReplyQueue
 import           Network.Kademlia.Types
-import           Network.Kademlia.Utils
 import           Prelude                         hiding (lookup)
 
 -- | Create a new KademliaInstance corresponding to a given Id on a given port

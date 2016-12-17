@@ -26,7 +26,9 @@ import           Prelude                 hiding (lookup)
 
 import           Control.Error.Util      ((?:))
 import           Control.Monad.Random    (evalRand)
+import           Data.Binary             (Binary)
 import qualified Data.List               as L (delete, find, genericTake)
+import           GHC.Generics            (Generic)
 import           System.Random           (StdGen)
 import           System.Random.Shuffle   (shuffleM)
 
@@ -35,11 +37,18 @@ import           Network.Kademlia.Types  (ByteStruct, Node (..), Serialize (..),
                                           fromByteStruct, sortByDistanceTo, toByteStruct)
 
 data NodeTree i = NodeTree ByteStruct (NodeTreeElem i)
+    deriving (Generic)
 
 data NodeTreeElem i = Split (NodeTreeElem i) (NodeTreeElem i)
                     | Bucket ([(Node i, Int)], [Node i])
+    deriving (Generic)
 
 type NodeTreeFunction i a = Int -> Bool -> ([(Node i, Int)], [Node i]) -> a
+
+instance Binary i => Binary (NodeTree i)
+
+instance Binary i => Binary (NodeTreeElem i)
+
 
 -- | Modify the position in the tree where the supplied id would be
 modifyAt :: (Serialize i) =>

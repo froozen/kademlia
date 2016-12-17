@@ -6,7 +6,8 @@ Tests specific to Network.Kademlia.Tree.
 -}
 
 module Tree
-       ( bucketSizeCheck
+       ( withTree
+       , bucketSizeCheck
        , deleteCheck
        , findClosestCheck
        , insertCheck

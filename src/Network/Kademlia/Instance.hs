@@ -10,6 +10,8 @@ Kademlia instance.
 module Network.Kademlia.Instance
     ( KademliaInstance (..)
     , KademliaState    (..)
+    , BanState (..)
+    , KademliaSnapshot (..)
     , defaultConfig
     , start
     , newInstance
@@ -18,6 +20,9 @@ module Network.Kademlia.Instance
     , dumpPeers
     , banNode
     , isNodeBanned
+    , takeSnapshot
+    , takeSnapshot'
+    , restoreInstance
     ) where
 
 import           Control.Concurrent          (ThreadId, forkIO, killThread, myThreadId)
@@ -25,16 +30,18 @@ import           Control.Concurrent.Chan     (Chan, readChan)
 import           Control.Concurrent.STM      (TVar, atomically, modifyTVar, newTVar,
                                               readTVar, writeTVar)
 import           Control.Exception           (catch)
-import           Control.Monad               (forM_, forever, forever, void, when)
-import           Control.Monad               (unless)
+import           Control.Monad               (forM_, forever, forever, unless, void, when)
 import           Control.Monad.Extra         (unlessM)
 import           Control.Monad.IO.Class      (liftIO)
 import           Control.Monad.Trans         ()
 import           Control.Monad.Trans.Reader  ()
 import           Control.Monad.Trans.State   ()
+import           Data.Binary                 (Binary)
 import           Data.Map                    (Map, toList)
 import qualified Data.Map                    as M hiding (Map)
 import           Data.Maybe                  (fromJust, isJust)
+import           Data.Time.Clock.POSIX       (getPOSIXTime)
+import           GHC.Generics                (Generic)
 import           System.Random               (newStdGen)
 
 import           Network.Kademlia.Config     (KademliaConfig (..), defaultConfig, k)
@@ -57,13 +64,28 @@ data KademliaInstance i a = KI {
     , config            :: KademliaConfig
     }
 
+-- | Ban condition for some node
+data BanState
+    = BanForever
+    | BanTill Integer  -- time in microseconds
+    | NoBan
+    deriving (Eq, Show, Generic)
+
 -- | Representation of the data the KademliaProcess carries
 data KademliaState i a = KS {
       sTree  :: TVar (T.NodeTree i)
-    , banned :: TVar (Map i (IO Bool))  -- list of banned node;
-                                        -- map value == False if ban expired
+    , banned :: TVar (Map i BanState)
     , values :: Maybe (TVar (Map i a))
     }
+
+data KademliaSnapshot i = KSP {
+      spTree   :: T.NodeTree i
+    , spBanned :: Map i BanState
+    } deriving (Generic)
+
+instance Binary BanState
+
+instance Binary i => Binary (KademliaSnapshot i)
 
 -- | Create a new KademliaInstance from an Id and a KademliaHandle
 newInstance :: (Serialize i) =>
@@ -129,18 +151,19 @@ isNodeBanned (KI _ (KS _ banned _) _ _) nid = do
     banSet <- atomically $ readTVar banned
     case M.lookup nid banSet of
         Nothing -> return False
-        Just bannedIO -> do
-            ban <- bannedIO
-            unless ban $ atomically . modifyTVar banned $ M.delete nid
-            return ban
+        Just b  -> do
+            stillBanned <- isBanned b
+            unless stillBanned $ atomically . modifyTVar banned $ M.delete nid
+            return stillBanned
+  where
+    isBanned NoBan       = return False
+    isBanned BanForever  = return True
+    isBanned (BanTill t) = ( < t) . round <$> getPOSIXTime
 
--- | Set a way to evaluate, whether given node is banned.
--- Once being evaluated to `False`, given value should neven evaluate to `True` anymore.
---
--- To temporaly ban node `Utils.mkTimer` would be handy.
-banNode :: (Serialize i, Ord i) => KademliaInstance i a -> i -> IO Bool -> IO ()
-banNode (KI _ (KS sTree banned _) _ _) nid evalBan = atomically $ do
-    modifyTVar banned $ M.insert nid evalBan
+-- | Mark node as banned
+banNode :: (Serialize i, Ord i) => KademliaInstance i a -> i -> BanState -> IO ()
+banNode (KI _ (KS sTree banned _) _ _) nid ban = atomically $ do
+    modifyTVar banned $ M.insert nid ban
     modifyTVar sTree $ \t -> T.delete t nid
 
 -- | Start the background process for a KademliaInstance
@@ -341,3 +364,27 @@ returnNodes peer nid (KI h (KS sTree _ _) _ _) = do
     let randomNodes = T.pickupNotClosest tree nid (fromIntegral k) (Just closest) rndGen
     let nodes       = closest ++ randomNodes
     liftIO $ send h peer (RETURN_NODES nid nodes)
+
+-- | Take a current view of `KademliaState`.
+takeSnapshot' :: KademliaState i a -> IO (KademliaSnapshot i)
+takeSnapshot' (KS tree banned _) = atomically $ do
+    spTree   <- readTVar tree
+    spBanned <- readTVar banned
+    return KSP{..}
+
+-- | Take a current view of `KademliaState`.
+takeSnapshot :: KademliaInstance i a -> IO (KademliaSnapshot i)
+takeSnapshot = takeSnapshot' . state
+
+-- | Restores instance from snapshot.
+restoreInstance :: Serialize i => KademliaConfig -> KademliaHandle i a
+                -> KademliaSnapshot i -> IO (KademliaInstance i a)
+restoreInstance cfg handle snapshot = do
+    inst <- emptyInstance
+    let st = state inst
+    atomically . writeTVar (sTree  st) $ spTree snapshot
+    atomically . writeTVar (banned st) $ spBanned snapshot
+    return inst
+  where
+    emptyInstance = newInstance nid cfg handle
+    nid           = T.extractId $ spTree snapshot

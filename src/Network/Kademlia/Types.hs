@@ -21,10 +21,12 @@ module Network.Kademlia.Types
        , toPeer
        ) where
 
+import           Data.Binary             (Binary (..))
 import           Data.Bits               (setBit, testBit, zeroBits)
 import qualified Data.ByteString         as B (ByteString, foldr, pack)
 import           Data.Function           (on)
 import           Data.List               (sortBy)
+import           GHC.Generics            (Generic)
 import           Network.Socket          (PortNumber, SockAddr (..), inet_ntoa)
 
 import           Network.Kademlia.Config (k)
@@ -33,19 +35,25 @@ import           Network.Kademlia.Config (k)
 data Peer = Peer {
       peerHost :: String
     , peerPort :: PortNumber
-    } deriving (Eq, Ord)
+    } deriving (Eq, Ord, Generic)
 
 instance Show Peer where
   show (Peer h p) = h ++ ":" ++ show p
+
+instance Binary Peer where
+    get = Peer <$> get <*> (toEnum <$> get)
+    put (Peer h p) = put h >> put (fromEnum p)
 
 -- | Representation of a Kademlia Node, containing a Peer and an Id
 data Node i = Node {
       peer   :: Peer
     , nodeId :: i
-    } deriving (Eq, Ord)
+    } deriving (Eq, Ord, Generic)
 
 instance Show i => Show (Node i) where
   show (Node peer nodeId) = show peer ++ " (" ++ show nodeId ++ ")"
+
+instance Binary i => Binary (Node i)
 
 -- | Sort a bucket by the closeness of its nodes to a give Id
 sortByDistanceTo :: (Serialize i) => [Node i] -> i -> [Node i]

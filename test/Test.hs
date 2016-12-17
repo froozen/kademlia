@@ -16,7 +16,8 @@ import           Implementation        (idClashCheck, joinBannedCheck, joinCheck
                                         joinFullCheck, lookupNodesCheck, nodeDownCheck,
                                         storeAndLookupCheck)
 import           Instance              (banNodeCheck, handlesPingCheck, isNodeBannedCheck,
-                                        storeAndFindValueCheck, trackingKnownPeersCheck)
+                                        snapshotCheck, storeAndFindValueCheck,
+                                        trackingKnownPeersCheck)
 import           Networking            (expectCheck, sendCheck)
 import           Protocol              (lengthCheck, parseCheck)
 import           ReplyQueue            (removedCheck, repliesCheck)
@@ -94,6 +95,8 @@ instanceChecks = testGroup "Network.Kademlia.Instance" [
          isNodeBannedCheck
     , HU.testCase "Messages from banned node are ignored"
          banNodeCheck
+    , QC.testProperty "Kademlia state snapshot is serialized and deserialized well"
+         snapshotCheck
     ]
 
 replyQueueChecks :: TestTree

@@ -1,5 +1,6 @@
-{-# LANGUAGE FlexibleInstances    #-}
-{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE TypeSynonymInstances       #-}
 
 {-|
 Module      : TestTypes
@@ -13,23 +14,26 @@ module TestTypes
        ) where
 
 
-import           Control.Arrow          (first)
-import           Control.Monad          (liftM, liftM2)
-import qualified Data.ByteString        as B
-import qualified Data.ByteString.Char8  as C
-import           Data.Function          (on)
-import           Data.List              (nubBy)
-import           Data.Word              (Word16)
-import           Network.Socket         (PortNumber)
+import           Control.Arrow             (first)
+import           Control.Monad             (liftM, liftM2)
+import           Data.Binary               (Binary)
+import qualified Data.ByteString           as B
+import qualified Data.ByteString.Char8     as C
+import           Data.Function             (on)
+import           Data.List                 (nubBy)
+import           Data.Word                 (Word16)
+import           Network.Socket            (PortNumber)
 
-import           Test.QuickCheck        (Arbitrary (..), Gen, oneof, suchThat, vectorOf)
+import           Test.QuickCheck           (Arbitrary (..), Gen, oneof, suchThat,
+                                            vectorOf)
 
-import           Network.Kademlia.Types (Command (..), Node (..), Peer (..),
-                                         Serialize (..), Signal (..))
+import           Network.Kademlia.Instance (BanState (..))
+import           Network.Kademlia.Types    (Command (..), Node (..), Peer (..),
+                                            Serialize (..), Signal (..))
 
 newtype IdType = IT
     { getBS :: B.ByteString
-    } deriving (Eq, Ord)
+    } deriving (Eq, Ord, Binary)
 
 -- Custom show instance
 instance Show IdType where
@@ -102,3 +106,10 @@ newtype IdBunch i = IB {
 
 instance (Arbitrary i, Eq i) => Arbitrary (IdBunch i) where
     arbitrary = liftM IB $ vectorOf 20 arbitrary `suchThat` individual (==)
+
+instance Arbitrary BanState where
+    arbitrary = oneof
+        [ return BanForever
+        , return NoBan
+        , BanTill <$> arbitrary
+        ]

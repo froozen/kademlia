@@ -26,7 +26,8 @@ import           Test.QuickCheck.Monadic   (PropertyM, assert, monadicIO, run)
 
 import qualified Network.Kademlia          as K
 import           Network.Kademlia.Config   (k, kRand)
-import           Network.Kademlia.Instance (KademliaInstance (..), KademliaState (..))
+import           Network.Kademlia.Instance (BanState (..), KademliaInstance (..),
+                                            KademliaState (..))
 import qualified Network.Kademlia.Tree     as T
 import           Network.Kademlia.Types    (Node (..), Peer (..))
 
@@ -106,7 +107,7 @@ joinBannedCheck idA idB = monadicIO $ do
     joinResult <- run $ do
         inst <- K.create 1123 idA :: IO (KademliaInstance IdType String)
 
-        K.banNode inst idB $ return True
+        K.banNode inst idB $ BanForever
         joinResult <- K.joinNetwork inst entryNode
 
         K.close inst
