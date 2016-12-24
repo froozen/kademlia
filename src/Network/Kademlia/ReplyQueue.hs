@@ -55,10 +55,10 @@ toRegistration (Answer sig)  = case rType . command $ sig of
     where origin = nodeId $ source sig
 
           rType :: Command i a -> Maybe (ReplyType i)
-          rType  PONG                = Just  R_PONG
-          rType (RETURN_VALUE nid _) = Just (R_RETURN_VALUE nid)
-          rType (RETURN_NODES nid _) = Just (R_RETURN_NODES nid)
-          rType _                    = Nothing
+          rType  PONG                  = Just  R_PONG
+          rType (RETURN_VALUE nid _)   = Just (R_RETURN_VALUE nid)
+          rType (RETURN_NODES _ nid _) = Just (R_RETURN_NODES nid)
+          rType _                      = Nothing
 
 -- | Compare wether two ReplyRegistrations match
 matchRegistrations :: (Eq i) => ReplyRegistration i -> ReplyRegistration i -> Bool
@@ -100,7 +100,7 @@ register
 register reg rq chan = do
     tId <- timeoutThread reg rq
     atomically $ do
-        rQueue <- readTVar . queue $ rq
+        rQueue <- readTVar $ queue rq
         writeTVar (queue rq) $ rQueue ++ [(reg, chan, tId)]
 
 timeoutThread :: ReplyRegistration i -> ReplyQueue i a -> IO ThreadId

@@ -25,7 +25,9 @@ import           Control.Monad.Extra         (unlessM)
 import           Control.Monad.IO.Class      (liftIO)
 import           Control.Monad.Trans.State   (StateT, evalStateT, gets, modify)
 import           Data.List                   (delete, find, (\\))
+import qualified Data.Map                    as M
 import           Data.Maybe                  (fromJust)
+import           Data.Word                   (Word8)
 
 import           Network.Kademlia.Config     (KademliaConfig (..), k)
 import           Network.Kademlia.Instance   (KademliaInstance (..), KademliaState (..),
@@ -72,7 +74,7 @@ lookup inst nid = runLookup go inst nid
 
           -- When receiving a RETURN_NODES command, throw the nodes into the
           -- lookup loop and continue the lookup
-          checkSignal (Signal _ (RETURN_NODES _ nodes)) =
+          checkSignal (Signal _ (RETURN_NODES _ _ nodes)) =
                 continueLookup nodes sendS continue cancel
           checkSignal _ = error "Fundamental error in unhandled query @lookup@"
 
@@ -101,7 +103,7 @@ store inst key val = runLookup go inst key
     where go = startLookup (config inst) sendS end checkSignal
 
           -- Always add the nodes into the loop and continue the lookup
-          checkSignal (Signal _ (RETURN_NODES _ nodes)) =
+          checkSignal (Signal _ (RETURN_NODES _ _ nodes)) =
                 continueLookup nodes sendS continue end
           checkSignal _ = error "Meet unknown signal in store"
 
@@ -159,15 +161,17 @@ joinNetwork inst node = ownId >>= runLookup go inst
           ownId =
             fmap T.extractId . atomically . readTVar .  sTree . state $ inst
 
-          -- Check wether the own id was encountered. If so, return a IDClash
-          -- error, otherwise, continue the lookup.
           -- Also insert all returned nodes to our bucket (see [CSL-258])
-          checkSignal (Signal _ (RETURN_NODES _ nodes)) = do
-                forM_ nodes $ liftIO . insertNode inst
-                tId <- gets targetId
-                case find (\retNode -> nodeId retNode == tId) nodes of
-                    Just _ -> return IDClash
-                    _      -> continueLookup nodes sendS continue finish
+          checkSignal (Signal _ (RETURN_NODES _ _ nodes)) = do
+                -- Check whether the own id was encountered. If so, return a IDClash
+                -- error, otherwise, continue the lookup.
+                -- Commented out due to possibility of bug (like when node reconnects)
+                -- tId <- gets targetId
+                -- case find (\retNode -> nodeId retNode == tId) nodes of
+                --     Just _ -> return IDClash
+                --     _      -> continueLookup nodes sendS continue finish
+                continueLookup nodes sendS continue finish
+
           checkSignal _ = error "Unknow signal for @joinNetwork@"
 
           -- Continuing always means waiting for the next signal
@@ -199,8 +203,7 @@ lookupNode inst nid = runLookup go inst nid
     -- * otherwise: return found node
     -- Also insert all returned nodes to our tree (see [CSL-258])
     checkSignal :: Signal i v -> LookupM i a (Maybe (Node i))
-    checkSignal (Signal _ (RETURN_NODES _ nodes)) = do
-        forM_ nodes $ liftIO . insertNode inst
+    checkSignal (Signal _ (RETURN_NODES _ _ nodes)) = do
         let targetNode = find ((== nid) . nodeId) nodes
         case targetNode of
             Nothing  -> continueLookup nodes sendS continue end
@@ -221,7 +224,7 @@ data LookupState i a = LookupState
     , targetId  :: !i
     , replyChan :: !(Chan (Reply i a))
     , known     :: ![Node i]
-    , pending   :: ![Node i]
+    , pending   :: !(M.Map (Node i) Word8)
     , polled    :: ![Node i]
     }
 
@@ -229,10 +232,10 @@ data LookupState i a = LookupState
 type LookupM i a = StateT (LookupState i a) IO
 
 -- Run a LookupM, returning its result
-runLookup :: LookupM i a b -> KademliaInstance i a -> i ->IO b
+runLookup :: Ord i => LookupM i a b -> KademliaInstance i a -> i -> IO b
 runLookup lookupM inst nid = do
     chan <- newChan
-    let state = LookupState inst nid chan [] [] []
+    let state = LookupState inst nid chan mempty mempty mempty
 
     evalStateT lookupM state
 
@@ -250,12 +253,12 @@ startLookup cfg signalAction cancel onSignal = do
     case T.findClosest tree nid (nbLookupNodes cfg) of
             [] -> cancel
             closest -> do
+                -- Add them to the list of known nodes. At this point, it will
+                -- be empty, therefore just overwrite it.
+                modify $ \s -> s { known = closest }
+
                 -- Send a signal to each of the Nodes
                 forM_ closest signalAction
-
-                -- Add them to the list of known nodes. At this point, it will
-                -- be empty, therfore just overwrite it.
-                modify $ \s -> s { known = closest }
 
                 -- Start the recursive lookup
                 waitForReply cancel onSignal
@@ -267,55 +270,61 @@ waitForReply :: (Serialize i, Serialize a, Ord i)
              -> LookupM i a b
 waitForReply cancel onSignal = do
     chan <- gets replyChan
-    sPending <- gets pending
-    known <- gets known
     inst <- gets inst
-    polled <- gets polled
 
     result <- liftIO . readChan $ chan
     case result of
         -- If there was a reply
-        Answer sig@(Signal node _) -> do
+        Answer sig@(Signal node cmd) -> do
             banned <- liftIO $ isNodeBanned inst $ nodeId node
 
             if banned
                 -- Ignore message from banned node, wait for another message
-                then cancel
+                then removeFromEverywhere node >> continueIfMorePending
                 else do
                     -- Insert the node into the tree, as it might be a new one or it
                     -- would have to be refreshed
                     liftIO . insertNode inst $ node
 
-                    -- Remove the node from the list of nodes with pending replies
-                    modify $ \s -> s { pending = delete node sPending }
-
+                    case cmd of
+                      RETURN_NODES n _ _ -> do
+                        toRemove <- maybe True ((>= n) . (+1)) <$> gets (M.lookup node . pending)
+                        if toRemove
+                           then removeFromPending node
+                           else modify $ \s -> s { pending = M.adjust (+1) node $ pending s }
+                      _ -> removeFromPending node
                     -- Call the signal handler
                     onSignal sig
 
         -- On timeout
         Timeout registration -> do
             let nid = replyOrigin registration
-
+            polled <- gets polled
             -- Find the node corresponding to the id
             --
             -- ReplyQueue guarantees us, that it will be in polled, therefore
             -- we can use fromJust
             let node = fromJust . find (\n -> nodeId n == nid) $ polled
 
-            -- Remove every trace of the node's existance
-            modify $ \s -> s {
-                  pending = delete node sPending
-                , known = delete node known
-                , polled = delete node polled
-                }
-
-            -- Continue, if there still are pending responses
-            updatedPending <- gets pending
-            if not . null $ updatedPending
-                then waitForReply cancel onSignal
-                else cancel
+            removeFromEverywhere node
+            continueIfMorePending
 
         Closed -> cancel
+  where
+    -- Remove the node from the list of nodes with pending replies
+    removeFromPending node = modify $ \s -> s { pending = M.delete node $ pending s }
+    -- Remove every trace of the node's existance
+    removeFromEverywhere node = modify $ \s -> s
+        { pending = M.delete node $ pending s
+        , known = delete node $ known s
+        , polled = delete node $ polled s
+        }
+    -- Continue, if there still are pending responses
+    continueIfMorePending = do
+        updatedPending <- gets pending
+        if not . null $ updatedPending
+            then waitForReply cancel onSignal
+            else cancel
 
 -- Decide wether, and which node to poll and react appropriately.
 --
@@ -330,10 +339,11 @@ continueLookup nodes signalAction continue end = do
     polled  <- gets polled
 
     -- Pick the k closest known nodes, that haven't been polled yet
-    let newKnown = take k . filter (`notElem` polled) $ nodes ++ known
+    let newKnown = take k . flip sortByDistanceTo nid . filter (`notElem` polled)
+                      $ nodes ++ known
 
-    -- If there the k closest nodes haven't been polled yet
-    polledNeighbours <- closestPolled newKnown
+    -- Check if k closest nodes have been polled already
+    polledNeighbours <- allClosestPolled newKnown
     if (not . null $ newKnown) && not polledNeighbours
         then do
             -- Send signal to the closest node, that hasn't
@@ -354,7 +364,7 @@ continueLookup nodes signalAction continue end = do
             -- Stop recursive lookup
             else end
 
-    where closestPolled known = do
+    where allClosestPolled known = do
             polled       <- gets polled
             closestKnown <- closest known
 
@@ -391,7 +401,7 @@ sendSignal cmd node = do
         -- Mark the node as polled and pending
         modify $ \s -> s {
               polled = node:polled
-            , pending = node:pending
+            , pending = M.insert node 0 pending
             }
 
     -- Determine the appropriate ReplyRegistrations to the command

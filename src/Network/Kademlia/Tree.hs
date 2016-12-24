@@ -140,6 +140,7 @@ handleTimeout tree nid = bothAt tree nid f
     where f _ _ (nodes, cache) = case L.find (idMatches nid . fst) nodes of
             -- Delete a node that exceeded the limit. Don't contact it again
             --   as it is now considered dead
+            -- TODO extract 4 to constants
             Just x@(_, 4) -> (Bucket (L.delete x $ nodes, cache), False)
             -- Increment the timeoutCount
             Just x@(n, timeoutCount) ->

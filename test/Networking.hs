@@ -95,7 +95,7 @@ expectCheck sig idA = monadicIO $ do
 
 -- | Convert a command into a ReplyType
 rType :: Command i a -> Maybe (ReplyType i)
-rType  PONG                = Just  R_PONG
-rType (RETURN_VALUE nid _) = Just (R_RETURN_VALUE nid)
-rType (RETURN_NODES nid _) = Just (R_RETURN_NODES nid)
-rType _                    = Nothing
+rType  PONG                  = Just  R_PONG
+rType (RETURN_VALUE nid _)   = Just (R_RETURN_VALUE nid)
+rType (RETURN_NODES _ nid _) = Just (R_RETURN_NODES nid)
+rType _                      = Nothing
