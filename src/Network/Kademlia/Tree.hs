@@ -15,7 +15,7 @@ module Network.Kademlia.Tree
        , lookup
        , delete
        , handleTimeout
-       , pickupNotClosest
+       , pickupRandom
        , findClosest
        , extractId
        , toView
@@ -25,7 +25,6 @@ module Network.Kademlia.Tree
 
 import           Prelude                 hiding (lookup)
 
-import           Control.Error.Util      ((?:))
 import           Control.Monad.Random    (evalRand)
 import           Data.Binary             (Binary)
 import qualified Data.List               as L (delete, find, genericTake)
@@ -33,7 +32,7 @@ import           GHC.Generics            (Generic)
 import           System.Random           (StdGen)
 import           System.Random.Shuffle   (shuffleM)
 
-import           Network.Kademlia.Config (k, kRand)
+import           Network.Kademlia.Config (k)
 import           Network.Kademlia.Types  (ByteStruct, Node (..), Serialize (..),
                                           fromByteStruct, sortByDistanceTo, toByteStruct)
 
@@ -206,22 +205,20 @@ split tree splitId = modifyAt tree splitId g
                                       then (left, n:right)
                                       else (n:left, right)
 
--- | Returns @⌈n/2⌉@ random nodes from @all \\ findClosest n@.
-pickupNotClosest
-    :: (Eq i, Serialize i)
+-- | Returns @n@ random nodes from @all \\ ignoredList@.
+pickupRandom
+    :: (Eq i)
     => NodeTree i
-    -> i
-    -> Word
-    -> Maybe [Node i]
+    -> Int
+    -> [Node i]
     -> StdGen
     -> [Node i]
-pickupNotClosest tree nodeId n maybeClosest randGen =
-    let nClosest      = maybeClosest ?: findClosest tree nodeId (fromIntegral n)
-        treeList      = toList tree
-        notChosen     = filter (`notElem` nClosest) treeList
-        n'            = kRand $ fromIntegral n
-        shuffledNodes = evalRand (shuffleM notChosen) randGen
-    in L.genericTake n' shuffledNodes
+pickupRandom _ 0 _ _ = []
+pickupRandom tree n ignoreList randGen =
+    let treeList      = toList tree
+        notIgnored     = filter (`notElem` ignoreList) treeList
+        shuffledNodes = evalRand (shuffleM notIgnored) randGen
+    in L.genericTake n shuffledNodes
 
 -- | Find the k closest Nodes to a given Id
 findClosest
