@@ -81,7 +81,7 @@ treeChecks = testGroup "Network.Kademlia.Tree" [
          refreshCheck
     , QC.testProperty "Finding closest works"
          findClosestCheck
-    , QC.testProperty "Not closest doesn't contain closest"
+    , QC.testProperty "PickupRandom with closest provided doesn't contain closest"
          pickupNotClosestDifferentCheck
     , QC.testProperty "Getting view of tree works correctly"
          viewCheck
