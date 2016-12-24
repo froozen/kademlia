@@ -34,7 +34,7 @@ defaultConfig = KademliaConfig
 -- are not convenient and required in many places. If we want to make it configurable
 -- we can implement this as a /compile-time/ constant or put in config in /runtime/.
 k :: Int
-k = 7
+k = 5
 
 -- | Additional random nodes. See [CSL-260].
 kRand :: Int -> Int
