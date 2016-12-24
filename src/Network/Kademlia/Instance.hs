@@ -176,19 +176,16 @@ start :: (Show i, Serialize i, Ord i, Serialize a, Eq a) =>
          KademliaInstance i a -> ReplyQueue i a -> IO ()
 start inst rq = do
         startRecvProcess . handle $ inst
-        let rChan = timeoutChan rq
-            dChan = defaultChan rq
-        receivingId <- forkIO . receivingProcess inst rq rChan $ dChan
-        pingId <- forkIO . pingProcess inst $ dChan
-        spreadId <- forkIO . spreadValueProcess $ inst
-        void . forkIO $ backgroundProcess inst dChan [pingId, spreadId, receivingId]
+        receivingId <- forkIO $ receivingProcess inst rq
+        pingId <- forkIO $ pingProcess inst $ defaultChan rq
+        spreadId <- forkIO $ spreadValueProcess inst
+        void . forkIO $ backgroundProcess inst (defaultChan rq) [pingId, spreadId, receivingId]
 
 -- | The central process all Replys go trough
 receivingProcess :: (Show i, Serialize i, Ord i) =>
-       KademliaInstance i a -> ReplyQueue i a -> Chan (Reply i a)
-    -> Chan (Reply i a)-> IO ()
-receivingProcess inst@(KI h _ _ _) rq replyChan registerChan = forever . (`catch` logError' h) $ do
-    reply <- readChan replyChan
+       KademliaInstance i a -> ReplyQueue i a -> IO ()
+receivingProcess inst@(KI h _ _ _) rq = forever . (`catch` logError' h) $ do
+    reply <- readChan $ timeoutChan rq
 
     logInfo h $ "Received reply: " ++ show reply
 
@@ -210,7 +207,7 @@ receivingProcess inst@(KI h _ _ _) rq replyChan registerChan = forever . (`catch
                         Just node -> do
                             -- Ping the node
                             send h (peer node) PING
-                            expect h newRegistration registerChan
+                            expect h newRegistration $ defaultChan rq
 
         -- Store values in newly encountered nodes that you are the closest to
         Answer (Signal node cmd) -> do
@@ -240,7 +237,7 @@ receivingProcess inst@(KI h _ _ _) rq replyChan registerChan = forever . (`catch
                     -- Ping unknown Nodes that were returned by RETURN_NODES.
                     -- Pinging them first is neccessary to prevent disconnected
                     -- nodes from spreading through the networks NodeTrees.
-                    (RETURN_NODES _ nodes) -> forM_ nodes $ \retNode -> do
+                    (RETURN_NODES _ _ nodes) -> forM_ nodes $ \retNode -> do
                         result <- lookupNode inst . nodeId $ retNode
                         case result of
                             Nothing -> send (handle inst) (peer retNode) PING
@@ -284,7 +281,7 @@ backgroundProcess inst@(KI h _ _ _) chan threadIds = do
             let node = source sig
             -- Handle the signal
             handleCommand (command sig) (peer node) inst
-            -- Insert the node into the tree, if it's allready known, it will
+            -- Insert the node into the tree, if it's already known, it will
             -- be refreshed
             insertNode inst node
 
@@ -368,7 +365,7 @@ returnNodes peer nid (KI h (KS sTree _ _) _ KademliaConfig {..}) = do
     let closest     = T.findClosest tree nid k
     let randomNodes = T.pickupRandom tree routingSharingN closest rndGen
     let nodes       = closest ++ randomNodes
-    liftIO $ send h peer (RETURN_NODES nid nodes)
+    liftIO $ send h peer (RETURN_NODES 0 nid nodes)
 
 -- | Take a current view of `KademliaState`.
 takeSnapshot' :: KademliaState i a -> IO (KademliaSnapshot i)

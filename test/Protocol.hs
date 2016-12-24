@@ -40,5 +40,5 @@ lengthCheck s =
   where
     err bs = "Serialized part of signal is too long: " ++ show (B.length bs) ++ " bytes"
     partLen = 100
-    isReturnNodes (RETURN_NODES _ _) = True
-    isReturnNodes _                  = False
+    isReturnNodes (RETURN_NODES _ _ _) = True
+    isReturnNodes _                    = False
