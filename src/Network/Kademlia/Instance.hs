@@ -168,7 +168,7 @@ banNode (KI _ (KS sTree banned _) _ _) nid ban = atomically $ do
     modifyTVar sTree $ \t -> T.delete t nid
 
 -- | Shows stored buckets, ordered by distance to this node
-viewBuckets :: Serialize i => KademliaInstance i a -> IO [[Node i]]
+viewBuckets :: KademliaInstance i a -> IO [[Node i]]
 viewBuckets (KI _ (KS sTree _ _) _ _) = T.toView <$> readTVarIO sTree
 
 -- | Start the background process for a KademliaInstance
@@ -365,7 +365,7 @@ returnNodes peer nid (KI h (KS sTree _ _) _ KademliaConfig {..}) = do
     let closest     = T.findClosest tree nid k
     let randomNodes = T.pickupRandom tree routingSharingN closest rndGen
     let nodes       = closest ++ randomNodes
-    liftIO $ send h peer (RETURN_NODES 0 nid nodes)
+    liftIO $ send h peer (RETURN_NODES 1 nid nodes)
 
 -- | Take a current view of `KademliaState`.
 takeSnapshot' :: KademliaState i a -> IO (KademliaSnapshot i)
