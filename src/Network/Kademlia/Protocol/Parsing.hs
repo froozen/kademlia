@@ -10,15 +10,14 @@ and more readable.
 
 module Network.Kademlia.Protocol.Parsing
        ( parse
-       , parseCommandId
        , parseSerialize
        , parseSignal
        , skipCharacter
-       , parseInt
        , parseWord16
+       , parseWord8
        ) where
 
-import           Control.Monad              (liftM, liftM2)
+import           Control.Monad              (liftM, liftM2, liftM3)
 import           Control.Monad.State        (State, evalState, get, put)
 import           Control.Monad.Trans        (lift)
 import           Control.Monad.Trans.Except (ExceptT, catchE, runExceptT, throwE)
@@ -41,7 +40,7 @@ parse peer = evalState (runExceptT $ parseSignal peer)
 -- | Parses the parsable parts of a signal
 parseSignal :: (Serialize i, Serialize a) => Peer -> Parse (Signal i a)
 parseSignal peer = do
-    cId <- parseCommandId
+    cId <- parseWord8
     nid <- parseSerialize
     cmd <- parseCommand cId
     let node = Node peer nid
@@ -56,16 +55,6 @@ parseSerialize = do
         Right (nid, rest) -> do
             lift . put $ rest
             return nid
-
--- | Parses a CommandId
-parseCommandId :: Parse Int
-parseCommandId = do
-    bs <- lift get
-    case B.uncons bs of
-        Nothing         -> throwE "uncons returned Nothing"
-        Just (nid, rest) -> do
-            lift . put $ rest
-            return $ fromIntegral nid
 
 -- | Splits after a certain character
 parseSplit :: Char -> Parse B.ByteString
@@ -86,15 +75,15 @@ skipCharacter = do
         then throwE "ByteString empty"
         else lift . put $ B.drop 1 bs
 
--- | Parses an Int
-parseInt :: Parse Int
-parseInt = do
+-- | Parses Word8
+parseWord8 :: Parse Word8
+parseWord8 = do
     bs <- lift get
-    case C.readInt bs of
-        Nothing -> throwE "Failed to parse an Int"
-        Just (n, rest) -> do
-            lift . put $ rest
-            return n
+    if B.null bs
+        then throwE "ByteString to short"
+        else do
+            lift . put $ B.tail bs
+            return $ B.head bs
 
 -- | Parses two Word8s from a ByteString into one Word16
 parseWord16 :: Parse Word16
@@ -129,12 +118,12 @@ parseKBucket = liftM2 (:) parseNode parseKBucket
                    `catchE` \_ -> return []
 
 -- | Parses the rest of a command corresponding to an id
-parseCommand :: (Serialize i, Serialize a) => Int -> Parse (Command i a)
+parseCommand :: (Serialize i, Serialize a) => Word8 -> Parse (Command i a)
 parseCommand 0 = return PING
 parseCommand 1 = return PONG
 parseCommand 2 = liftM2 STORE parseSerialize parseSerialize
 parseCommand 3 = FIND_NODE `liftM` parseSerialize
-parseCommand 4 = liftM2 RETURN_NODES  parseSerialize parseKBucket
+parseCommand 4 = liftM3 RETURN_NODES parseWord8 parseSerialize parseKBucket
 parseCommand 5 = FIND_VALUE `liftM` parseSerialize
 parseCommand 6 = liftM2 RETURN_VALUE parseSerialize parseSerialize
 parseCommand _ = throwE "Invalid id"
