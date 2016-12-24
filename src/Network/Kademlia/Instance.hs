@@ -362,11 +362,11 @@ handleCommand _ _ _ = return ()
 -- | Return a KBucket with the closest Nodes to a supplied Id
 returnNodes :: (Serialize i, Ord i) =>
     Peer -> i -> KademliaInstance i a -> IO ()
-returnNodes peer nid (KI h (KS sTree _ _) _ _) = do
+returnNodes peer nid (KI h (KS sTree _ _) _ KademliaConfig {..}) = do
     tree           <- atomically . readTVar $ sTree
     rndGen         <- newStdGen
     let closest     = T.findClosest tree nid k
-    let randomNodes = T.pickupNotClosest tree nid (fromIntegral k) (Just closest) rndGen
+    let randomNodes = T.pickupRandom tree routingSharingN closest rndGen
     let nodes       = closest ++ randomNodes
     liftIO $ send h peer (RETURN_NODES nid nodes)
 

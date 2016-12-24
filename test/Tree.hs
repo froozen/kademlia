@@ -107,7 +107,7 @@ pickupNotClosestDifferentCheck nid = withTree verifyNotClosest
     verifyNotClosest :: T.NodeTree IdType -> [Node IdType] -> Property
     verifyNotClosest tree _ =
         let closest    = T.findClosest tree nid k
-            notClosest = T.pickupNotClosest tree nid (fromIntegral k) Nothing (mkStdGen 42)
+            notClosest = T.pickupRandom tree k closest (mkStdGen 42)
         in property $ all (`notElem` notClosest) closest
 
 -- | Make sure `toView` represents tree correctly
