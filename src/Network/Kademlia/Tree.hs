@@ -231,14 +231,16 @@ findClosest
     -> [Node i]
 findClosest (NodeTree idStruct treeElem) nid n =
     let targetStruct = toByteStruct nid
-    in go idStruct targetStruct treeElem
+    in chooseClosest $ go idStruct targetStruct treeElem
   where
+    chooseClosest nodes = take n . sortByDistanceTo nodes $ nid
+
     -- This function is partial for the same reason as in modifyAt
     --
-    -- Take the n closest nodes + n/2 random nodes
+    -- Take the n closest nodes
     go _ _ (Bucket (nodes, _))
       | length nodes <= n = map fst nodes
-      | otherwise         = take n . sortByDistanceTo (map fst nodes) $ nid
+      | otherwise         = chooseClosest $ map fst nodes
     -- Take the closest nodes from the left child first, if those aren't
     -- enough, take the rest from the right
     go (_:is) (False:ts) (Split left right) =
