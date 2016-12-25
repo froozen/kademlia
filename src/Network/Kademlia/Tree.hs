@@ -23,6 +23,7 @@ module Network.Kademlia.Tree
        , fold
        ) where
 
+import Debug.Trace
 import           Prelude                 hiding (lookup)
 
 import           Control.Monad.Random    (evalRand)
@@ -160,9 +161,9 @@ refresh node (nodes, cache) =
 
 -- | Insert a node into a NodeTree
 insert :: (Serialize i, Eq i) => NodeTree i -> Node i -> NodeTree i
-insert tree node = if applyAt tree (nodeId node) needsSplit
+insert tree node = trace ("inserting " ++ show (peer node)) $ if applyAt tree (nodeId node) needsSplit
                    -- Split the tree before inserting, when it makes sense
-                   then let splitTree = split tree . nodeId $ node
+                   then let splitTree = trace ("need split " ++ show (peer node)) split tree . nodeId $ node
                         in insert splitTree node
                    -- Insert the node
                    else modifyAt tree (nodeId node) doInsert
@@ -178,13 +179,13 @@ insert tree node = if applyAt tree (nodeId node) needsSplit
 
           doInsert _ _ b@(nodes, cache)
             -- Refresh an already existing node
-            | node `elem` map fst nodes = refresh node b
+            | node `elem` map fst nodes = trace ("refresh " ++ show (peer node)) $ refresh node b
             -- Simply insert the node, if the bucket isn't full
-            | length nodes < k = Bucket ((node, 0):nodes, cache)
+            | length nodes < k = trace ("simple " ++ show (peer node)) $ Bucket ((node, 0):nodes, cache)
             -- Move the node to the first spot, if it's already cached
-            | node `elem` cache = Bucket (nodes, node : L.delete node cache)
+            | node `elem` cache = trace ("to_cache " ++ show (peer node)) $ Bucket (nodes, node : L.delete node cache)
             -- Cache the node and drop older ones, if necessary
-            | otherwise = Bucket (nodes, node : take 4 cache)
+            | otherwise = trace ("otherwise " ++ show (peer node)) $ Bucket (nodes, node : take 4 cache)
 
 -- | Split the KBucket the specified id would reside in into two and return a
 --   Split NodeTreeElem
@@ -270,7 +271,7 @@ toView (NodeTree bs treeElems) = go bs treeElems []
           -- Else go right first
           go (True:is)  (Split left right) = go is right . go is left
           go _          (Split _    _    ) = error "toView: unexpected Split"
-          go _          (Bucket (b, _))    = (map fst b :)
+          go _          (Bucket (b, cache))    = trace ("bucket: " ++ show (map (peer.fst) b) ++ " cached: " ++ show (map peer cache)) (map fst b :)
 
 -- | Turn the NodeTree into a list of nodes
 toList :: NodeTree i -> [Node i]

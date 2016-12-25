@@ -30,7 +30,8 @@ defaultConfig = KademliaConfig
     , nbLookupNodes  = 3
     , msgSizeLimit   = 1200
     , storeValues    = True
-    , routingSharingN = defaultRoutingSharingN
+    --, routingSharingN = defaultRoutingSharingN
+    , routingSharingN = 0
     }
 
 -- | @k@ nearest heighbours for query. Constant from paper.

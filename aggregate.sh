@@ -2,11 +2,13 @@
 
 source ./common.sh
 
+prefix=$1
+
 lsids()
 {
-    for file in log/node*.log; do
+    for file in log/$prefix*.log; do
         id=${file%%.log}
-        id=${id##log/node}
+        id=${id##log/$prefix}
         echo $id
     done
 }
@@ -20,7 +22,7 @@ for id in `lsids | sort -n`; do
         group=2
     fi
 
-    file=log/node$id.log
+    file=log/$prefix$id.log
     cnt1=0
     cnt2=0
     for peer in `cut -d ' ' -f1 $file`; do

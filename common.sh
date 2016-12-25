@@ -2,4 +2,4 @@
 
 export n1=10
 export n2=80
-export t=120
+export t=60

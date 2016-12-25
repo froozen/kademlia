@@ -50,10 +50,10 @@ n2 :: Integral a => a
 n2 = 80
 
 t :: Integral a => a
-t = 120
+t = 60
 
 randomSeed :: Integral a => a
-randomSeed = 42
+randomSeed = 123
 
 instance K.Serialize KademliaID where
    toBS (KademliaID bs)
@@ -100,6 +100,9 @@ generateKeys = do
 generatePorts :: [Int]
 generatePorts = [3000 .. 3000 + n1 + n2]
 
+listToStr :: Show s => [s] -> String
+listToStr = unlines . map show
+
 executeCommand :: String -> NodeMode ()
 executeCommand "sleep" = do
   lift $ putStrLn "Executing sleep command"
@@ -107,8 +110,13 @@ executeCommand "sleep" = do
 executeCommand "dump" = do
   lift $ putStrLn "Executing dump command"
   inst <- nsInstance <$> S.get
-  lift $ print . length =<< K.dumpPeers inst
-  lift $ mapM_ (putStrLn . show) =<< K.dumpPeers inst
+  id <- nsNodeIndex <$> S.get
+  lift $ appendFile ("log/node" ++ show id ++ ".log") . listToStr  =<< K.dumpPeers inst
+executeCommand "dump_initial" = do
+  lift $ putStrLn "Executing dump_initial command"
+  inst <- nsInstance <$> S.get
+  id <- nsNodeIndex <$> S.get
+  lift $ appendFile ("log/dump" ++ show id ++ ".log") . listToStr =<< K.dumpPeers inst
 executeCommand _ = return ()
 
 connectToPeer :: KademliaInstance -> PortNumber -> B.ByteString -> IO K.JoinResult
@@ -116,18 +124,26 @@ connectToPeer inst peerPort peerId = do
     let peerNode = K.Node (K.Peer "127.0.0.1" peerPort) . KademliaID $ peerId
     K.joinNetwork inst peerNode
 
-scenario :: NodeMode ()
-scenario = do
+scenarioGroup1 :: NodeMode ()
+scenarioGroup1 = do
+  executeCommand "sleep"
+  executeCommand "dump_initial"
   executeCommand "sleep"
   executeCommand "dump"
   executeCommand "sleep"
+
+scenarioGroup2 :: NodeMode ()
+scenarioGroup2 = do
+  executeCommand "sleep"
+  executeCommand "dump"
   executeCommand "sleep"
 
 main :: IO ()
 main = do
-    [arg0, arg1] <- getArgs
+    [arg0, arg1, arg2] <- getArgs
     let nodeIndex = read arg0
         peerIndex = read arg1
+        groupIndex = (read arg2) :: Int
         ports = generatePorts
         keys = evalRand generateKeys (mkStdGen randomSeed)
         port = ports !! nodeIndex
@@ -145,5 +161,5 @@ main = do
     let state = NodeState { nsInstance = kInstance
                           , nsNodeIndex = nodeIndex
                           }
-    _ <- S.runStateT scenario state
+    _ <- S.runStateT (if groupIndex == 0 then scenarioGroup1 else scenarioGroup2) state
     K.close kInstance

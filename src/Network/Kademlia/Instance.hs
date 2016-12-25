@@ -56,6 +56,7 @@ import           Network.Kademlia.Types      (Command (..), Node (..), Peer (..)
                                               Serialize (..), Signal (..),
                                               sortByDistanceTo)
 import           Network.Kademlia.Utils      (threadDelay)
+import System.IO (stderr, hPutStrLn)
 
 -- | The handle of a running Kademlia Node
 data KademliaInstance i a = KI {
@@ -101,7 +102,9 @@ newInstance nid cfg handle = do
 -- | Insert a Node into the NodeTree
 insertNode :: (Serialize i, Ord i) => KademliaInstance i a -> Node i -> IO ()
 insertNode inst@(KI _ (KS sTree _ _) _ _) node = do
-    unlessM (isNodeBanned inst $ nodeId node) $ atomically $ do
+    unlessM (isNodeBanned inst $ nodeId node) $ do
+      hPutStrLn stderr $ "Node is not banned" ++ show (peer node)
+      atomically $ do
         tree <- readTVar sTree
         writeTVar sTree . T.insert tree $ node
 
@@ -283,6 +286,7 @@ backgroundProcess inst@(KI h _ _ _) chan threadIds = do
             handleCommand (command sig) (peer node) inst
             -- Insert the node into the tree, if it's already known, it will
             -- be refreshed
+            liftIO . hPutStrLn stderr $ "INSERT: backgroundProcess" ++ show (peer node)
             insertNode inst node
 
 -- | Ping all known nodes every five minutes to make sure they are still present

@@ -38,6 +38,7 @@ import qualified Network.Kademlia.Tree       as T
 import           Network.Kademlia.Types      (Command (..), Node (..), Serialize (..),
                                               Signal (..), sortByDistanceTo)
 
+import System.IO (stderr, hPutStrLn)
 
 -- | Lookup the value corresponding to a key in the DHT and return it, together
 --   with the Node that was the first to answer the lookup
@@ -285,6 +286,7 @@ waitForReply cancel onSignal = do
                     -- Insert the node into the tree, as it might be a new one or it
                     -- would have to be refreshed
                     liftIO . insertNode inst $ node
+                    liftIO . hPutStrLn stderr $ "INSERT: waitForReply" ++ show (peer node)
 
                     case cmd of
                       RETURN_NODES n _ _ -> do
