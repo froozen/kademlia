@@ -234,7 +234,7 @@ findClosest (NodeTree idStruct treeElem) nid n =
   where
     -- This function is partial for the same reason as in modifyAt
     --
-    -- Take the n closest nodes + n/2 random nodes
+    -- Take the n closest nodes
     go _ _ (Bucket (nodes, _))
       | length nodes <= n = map fst nodes
       | otherwise         = take n . sortByDistanceTo (map fst nodes) $ nid
