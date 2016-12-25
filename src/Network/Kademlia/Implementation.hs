@@ -287,11 +287,16 @@ waitForReply cancel onSignal = do
                     liftIO . insertNode inst $ node
 
                     case cmd of
-                      RETURN_NODES n _ _ -> do
+                      RETURN_NODES n nid _ -> do
                         toRemove <- maybe True ((>= n) . (+1)) <$> gets (M.lookup node . pending)
                         if toRemove
                            then removeFromPending node
-                           else modify $ \s -> s { pending = M.adjust (+1) node $ pending s }
+                           else do
+                               modify $ \s -> s { pending = M.adjust (+1) node $ pending s }
+                               let h = handle inst
+                                   reg = RR [R_RETURN_NODES nid] (nodeId node)
+                               return ()
+                               liftIO $ expect h reg chan
                       _ -> removeFromPending node
                     -- Call the signal handler
                     onSignal sig
