@@ -17,16 +17,16 @@ import           Network.Kademlia.Utils (hour, minute)
 
 data KademliaConfig = KademliaConfig {
       k               :: !Int  -- ^ @k@ nearest heighbours for query. Constant from paper.
-    , expirationTime  :: !Int  -- ^ in seconds
-    , storeValueTime  :: !Int  -- ^ in seconds
-    , pingTime        :: !Int  -- ^ in seconds
+    , expirationTime  :: !Int  -- ^ we delete a value after @expirationTime@ seconds has passed
+    , storeValueTime  :: !Int  -- ^ we store all values stored in the node in the 'k' closest known nodes every @storeValueTime@ seconds
+    , pingTime        :: !Int  -- ^ we ping all known nodes every @pingTime@ seconds to make sure they are still present
     , nbLookupNodes   :: !Int  -- ^ number of nodes to look in parallel during a lookup
                                --   also known as α in kademlia paper
     , msgSizeLimit    :: !Int  -- ^ upper bound on size of message transfered through
                                --   network; exceeding messages would be splitted
     , storeValues     :: !Bool -- ^ when this is False, we don't store anything in this node
     , routingSharingN :: !Int  -- ^ number of nodes from not closest to include int `returnNodes` responses (see [CSL-260])
-    , bucketSize      :: !Int
+    , bucketSize      :: !Int  -- ^ bucket size used by Node Storage Tree
     }
 
 newtype WithConfigT m a = WithConfigT
