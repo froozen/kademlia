@@ -19,8 +19,8 @@ data Pong = Pong
           deriving (Eq, Show)
 
 instance K.Serialize Pong where
-  toBS = toBSBinary
-  fromBS = fromBSBinary
+    toBS = toBSBinary
+    fromBS = fromBSBinary
 
 type KademliaValue = Pong
 newtype KademliaID = KademliaID B.ByteString
@@ -28,13 +28,13 @@ newtype KademliaID = KademliaID B.ByteString
 
 type KademliaInstance = K.KademliaInstance KademliaID KademliaValue
 instance K.Serialize KademliaID where
-   toBS (KademliaID bs)
-       | B.length bs >= kIdLength = B.take kIdLength bs
-       | otherwise                = error $ "KademliaID to short!"
+    toBS (KademliaID bs)
+        | B.length bs >= kIdLength = B.take kIdLength bs
+        | otherwise                = error $ "KademliaID to short!"
 
-   fromBS bs
-       | B.length bs >= kIdLength = Right . first KademliaID . B.splitAt kIdLength $ bs
-       | otherwise                = Left "ByteString too short!"
+    fromBS bs
+        | B.length bs >= kIdLength = Right . first KademliaID . B.splitAt kIdLength $ bs
+        | otherwise                = Left "ByteString too short!"
 
 instance Binary Pong where
     put _ = putWord8 1
@@ -71,9 +71,9 @@ fromBSBinary bs =
 
 parseCommand :: String -> Command
 parseCommand s = case words s of
-  ["sleep", secs] -> Sleep $ read secs
-  ["dump", name]  -> Dump name
-  _               -> error $ "couldn't parse command " ++ s
+    ["sleep", secs] -> Sleep $ read secs
+    ["dump", name]  -> Dump name
+    _               -> error $ "couldn't parse command " ++ s
 
 generateByteString :: (RandomGen g) => Int -> Rand g B.ByteString
 generateByteString len = C.pack <$> sequence (replicate len getRandom)
@@ -83,12 +83,11 @@ generateKey prefix = B.append prefix <$> generateByteString (kIdLength - B.lengt
 
 generateKeys :: (RandomGen g) => Int -> [Int] -> Rand g [B.ByteString]
 generateKeys prefixLength [n1, n2, n3] = do
-  n1keys <- generate n1 (C.pack "")
-  prefix <- generateByteString prefixLength
-  n2keys <- generate n2 prefix
-  -- prefix' <- generatePrefix
-  n3keys <- generate n3 prefix
-  return $ n1keys ++ n2keys ++ n3keys
+    n1keys <- generate n1 (C.pack "")
+    prefix <- generateByteString prefixLength
+    n2keys <- generate n2 prefix
+    n3keys <- generate n3 prefix
+    return $ n1keys ++ n2keys ++ n3keys
   where
     generate count prefix = sequence $ replicate count $ generateKey prefix
 generateKeys _ _            = error "there should be exactly 3 groups"
@@ -102,13 +101,13 @@ listToStr = unlines . map show
 
 executeCommand :: Command -> NodeMode ()
 executeCommand (Sleep t) = do
-  lift $ putStrLn "Executing sleep command"
-  lift $ threadDelay $ t * 1000000
+    lift $ putStrLn "Executing sleep command"
+    lift $ threadDelay $ t * 1000000
 executeCommand (Dump name) = do
-  lift $ putStrLn "Executing dump command"
-  inct <- ncInstance <$> S.get
-  idx <- ncNodeIndex <$> S.get
-  lift $ appendFile ("log/" ++ name ++ show idx ++ ".log") . listToStr  =<< K.dumpPeers inct
+    lift $ putStrLn "Executing dump command"
+    inct <- ncInstance <$> S.get
+    idx <- ncNodeIndex <$> S.get
+    lift $ appendFile ("log/" ++ name ++ show idx ++ ".log") . listToStr  =<< K.dumpPeers inct
 
 connectToPeer :: KademliaInstance -> PortNumber -> B.ByteString -> IO K.JoinResult
 connectToPeer inct peerPort peerId = do
@@ -145,10 +144,10 @@ main = do
     putStrLn $ "peerPort " ++ show peerPort
     kInstance <- K.createL port (KademliaID key) config logInfo logError
     when (peerPort /= 0) $ do
-      putStrLn "Connecting to peer"
-      r <- connectToPeer kInstance peerPort peerKey
-      when (r /= K.JoinSuccess) $
-        putStrLn . ("Connection to peer failed "++) . show $ r
+        putStrLn "Connecting to peer"
+        r <- connectToPeer kInstance peerPort peerKey
+        when (r /= K.JoinSuccess) $
+            putStrLn . ("Connection to peer failed "++) . show $ r
 
     let state = NodeConfig { ncInstance  = kInstance
                            , ncNodeIndex = nodeIndex
