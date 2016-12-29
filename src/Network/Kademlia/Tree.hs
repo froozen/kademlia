@@ -23,7 +23,6 @@ module Network.Kademlia.Tree
        , fold
        ) where
 
-import Debug.Trace
 import           Prelude                 hiding (lookup)
 
 import           Control.Monad.Random    (evalRand)
