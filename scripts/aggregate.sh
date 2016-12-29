@@ -22,16 +22,16 @@ lsids()
     done
 }
 
-echo "node id,group id,group1,group2,group3"
+echo "node id,group id,group0,group1,group2"
 
 for id in `lsids | sort -n`; do
     let "n01=$n0+$n1"
     if [[ $id -lt $n0 ]]; then
         group=0
     elif [[ $id -lt $n01 ]]; then
-        group=2
+        group=1
     else
-        group=3
+        group=2
     fi
 
     file=log/$prefix$id.log

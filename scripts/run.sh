@@ -36,7 +36,7 @@ launch_group ()
     esac
 
     for i in `seq $start $end`; do
-        echo "$script" | stack exec discovery $k $routingSharingN $i $peer $n0 $n1 $n2 &>log/stdout$i.log &
+        echo "$script" | stack exec discovery $k $routingSharingN $prefixLen $i $peer $n0 $n1 $n2 &>log/stdout$i.log &
         sleep 0.25s
     done
 }
@@ -46,6 +46,7 @@ echo "N0=$n0"
 echo "N1=$n1"
 echo "N2=$n2"
 echo "k=$k"
+echo "prefixLen=$prefixLen"
 echo "routingSharingN=$routingSharingN"
 echo "T=$t"
 echo "peer1=$peer1"

@@ -1,12 +1,22 @@
 #!/usr/bin/env bash
 
+# Size of group 0
 export n0=10
+# Size of group 1
 export n1=80
+# Initial peer for group 1
 export peer1=0
+# Size of group 2
 export n2=0
+# Initial peer for group 2
 export peer2=0
+# parameter of kademlia
 export k=5
+# parameter of kademlia
 export routingSharingN=0
+# Common prefix for keys for nodes from groups 1 and 2
+export prefixLen=17
+# Time in seconds to wait until routing tables stabilize
 export t=60
 
 let t2=$t*2; export t2

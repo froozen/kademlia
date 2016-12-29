@@ -81,23 +81,20 @@ parseCommand s = case words s of
 generateByteString :: (RandomGen g) => Int -> Rand g B.ByteString
 generateByteString len = C.pack <$> sequence (replicate len getRandom)
 
-generatePrefix :: (RandomGen g) => Rand g B.ByteString
-generatePrefix = generateByteString kPrefixLength
-
 generateKey :: (RandomGen g) => B.ByteString -> Rand g B.ByteString
 generateKey prefix = B.append prefix <$> generateByteString (kIdLength - B.length prefix)
 
-generateKeys :: (RandomGen g) => [Int] -> Rand g [B.ByteString]
-generateKeys [n1, n2, n3] = do
+generateKeys :: (RandomGen g) => Int -> [Int] -> Rand g [B.ByteString]
+generateKeys prefixLength [n1, n2, n3] = do
   n1keys <- generate n1 (C.pack "")
-  prefix <- generatePrefix
+  prefix <- generateByteString prefixLength
   n2keys <- generate n2 prefix
   -- prefix' <- generatePrefix
   n3keys <- generate n3 prefix
   return $ n1keys ++ n2keys ++ n3keys
   where
     generate count prefix = sequence $ replicate count $ generateKey prefix
-generateKeys _            = error "there should be exactly 3 groups"
+generateKeys _ _            = error "there should be exactly 3 groups"
 
 generatePorts :: [Int] -> [Int]
 generatePorts [n1, n2, n3] = [3000 .. 3000 + n1 + n2 + n3]
@@ -126,11 +123,12 @@ main = do
     args <- getArgs
     let k         = read $ args !! 0
         rSharing  = read $ args !! 1
-        nodeIndex = read $ args !! 2
-        peerIndex = read $ args !! 3
-        groups    = map read $ drop 4 args
+        prefixLen = read $ args !! 2
+        nodeIndex = read $ args !! 3
+        peerIndex = read $ args !! 4
+        groups    = map read $ drop 5 args
         ports     = generatePorts groups
-        keys      = evalRand (generateKeys groups) (mkStdGen randomSeed)
+        keys      = evalRand (generateKeys prefixLen groups) (mkStdGen randomSeed)
         port      = ports !! nodeIndex
         key       = keys !! nodeIndex
         peerPort  = fromIntegral $ ports !! peerIndex
