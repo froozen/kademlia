@@ -26,7 +26,8 @@ data KademliaConfig = KademliaConfig {
                                --   network; exceeding messages would be splitted
     , storeValues     :: !Bool -- ^ when this is False, we don't store anything in this node
     , routingSharingN :: !Int  -- ^ number of nodes from not closest to include int `returnNodes` responses (see [CSL-260])
-    , bucketSize      :: !Int  -- ^ bucket size used by Node Storage Tree
+    , cacheSize       :: !Int  -- ^ cache size used by Node Storage Tree
+    , pingLimit       :: !Int  -- ^ after unsuccessfull @pingLimit@ pings node will be throwed out from bucket
     }
 
 newtype WithConfigT m a = WithConfigT
@@ -60,5 +61,6 @@ defaultConfig = KademliaConfig
     , msgSizeLimit    = 1200
     , storeValues     = True
     , routingSharingN = defaultRoutingSharingN
-    , bucketSize      = 4
+    , cacheSize       = 5
+    , pingLimit       = 4
     }
