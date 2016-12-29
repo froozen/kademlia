@@ -41,16 +41,19 @@ kIdLength :: Integral a => a
 kIdLength = 20
 
 kPrefixLength :: Integral a => a
-kPrefixLength = 17
+kPrefixLength = 0
 
 n1 :: Integral a => a
 n1 = 10
 
 n2 :: Integral a => a
-n2 = 80
+n2 = 30
+
+n3 :: Integral a => a
+n3 = 0
 
 t :: Integral a => a
-t = 60
+t = 200
 
 randomSeed :: Integral a => a
 randomSeed = 123
@@ -93,12 +96,14 @@ generateKeys = do
   n1keys <- generate n1 (C.pack "")
   prefix <- generatePrefix
   n2keys <- generate n2 prefix
-  return $ n1keys ++ n2keys
+  -- prefix' <- generatePrefix
+  n3keys <- generate n3 prefix
+  return $ n1keys ++ n2keys ++ n3keys
   where
     generate count prefix = sequence $ replicate count $ generateKey prefix
 
 generatePorts :: [Int]
-generatePorts = [3000 .. 3000 + n1 + n2]
+generatePorts = [3000 .. 3000 + n1 + n2 + n3]
 
 listToStr :: Show s => [s] -> String
 listToStr = unlines . map show
@@ -117,6 +122,11 @@ executeCommand "dump_initial" = do
   inst <- nsInstance <$> S.get
   id <- nsNodeIndex <$> S.get
   lift $ appendFile ("log/dump" ++ show id ++ ".log") . listToStr =<< K.dumpPeers inst
+executeCommand "snd" = do
+  lift $ putStrLn "Executing snd command"
+  inst <- nsInstance <$> S.get
+  id <- nsNodeIndex <$> S.get
+  lift $ appendFile ("log/snd" ++ show id ++ ".log") . listToStr =<< K.dumpPeers inst
 executeCommand _ = return ()
 
 connectToPeer :: KademliaInstance -> PortNumber -> B.ByteString -> IO K.JoinResult
@@ -126,17 +136,26 @@ connectToPeer inst peerPort peerId = do
 
 scenarioGroup1 :: NodeMode ()
 scenarioGroup1 = do
+  -- Run N1, N2
   executeCommand "sleep"
   executeCommand "dump_initial"
-  executeCommand "sleep"
-  executeCommand "dump"
   executeCommand "sleep"
 
 scenarioGroup2 :: NodeMode ()
 scenarioGroup2 = do
+  -- Run N2, N1
+  executeCommand "sleep"
+  executeCommand "dump_initial"
+  executeCommand "sleep"
   executeCommand "sleep"
   executeCommand "dump"
-  executeCommand "sleep"
+
+scenarioGroup3 :: NodeMode ()
+scenarioGroup3 = do
+  undefined
+
+scenario :: [NodeMode ()]
+scenario = [scenarioGroup1, scenarioGroup2, scenarioGroup3]
 
 main :: IO ()
 main = do
@@ -161,5 +180,5 @@ main = do
     let state = NodeState { nsInstance = kInstance
                           , nsNodeIndex = nodeIndex
                           }
-    _ <- S.runStateT (if groupIndex == 0 then scenarioGroup1 else scenarioGroup2) state
+    _ <- S.runStateT (scenario !! groupIndex) state
     K.close kInstance
