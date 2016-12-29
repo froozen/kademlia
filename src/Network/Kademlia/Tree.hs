@@ -172,7 +172,10 @@ insert tree node = do
             -- The bucket is full
             length nodes >= k &&
             -- The bucket may be split
-            (depth < 5 || valid) && depth <= maxDepth
+            -- @georgeee: I peered at this code for ~30-40 mins.
+            --   I clearly don't understand what was the reason to introduce `depth < 5`.
+            --   Perhaps some kind of +\- 1, to not care about corner case
+           (depth < 5 || valid) && depth <= maxDepth
 
         doInsert _ _ b@(nodes, cache)
           -- Refresh an already existing node
@@ -190,7 +193,6 @@ insert tree node = do
          in flip insert node =<< splitTree
     -- Insert the node
     else modifyAt tree (nodeId node) doInsert
-
 
 -- | Split the KBucket the specified id would reside in into two and return a
 --   Split NodeTreeElem
