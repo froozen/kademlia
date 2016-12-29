@@ -38,6 +38,7 @@ import qualified Network.Kademlia.Tree       as T
 import           Network.Kademlia.Types      (Command (..), Node (..), Serialize (..),
                                               Signal (..), sortByDistanceTo)
 
+
 -- | Lookup the value corresponding to a key in the DHT and return it, together
 --   with the Node that was the first to answer the lookup
 lookup :: (Serialize i, Serialize a, Ord i) => KademliaInstance i a -> i
