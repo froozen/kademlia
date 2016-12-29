@@ -118,3 +118,31 @@ test-suite library-test
                         OverloadedStrings
                         RecordWildCards
                         TypeApplications
+
+
+executable discovery-test
+  main-is:             DiscoveryTest.hs
+  build-depends:       base                >= 4.7 && < 5
+                     , binary              >= 0.8.3
+                     , bytestring          >= 0.10.2 && < 0.11
+                     , containers          >= 0.5.5.1
+                     , data-default        >= 0.7
+                     , extra               >= 1.4
+                     , kademlia
+                     , MonadRandom
+                     , mtl                 >= 2.1.3.1
+                     , network             >= 2.6 && < 2.7
+                     , random
+                     , transformers        >= 0.3
+                     , transformers-compat >= 0.3.3
+
+  hs-source-dirs:      examples
+  default-language:    Haskell2010
+  ghc-options:         -Wall -fno-warn-orphans -O2
+
+  default-extensions:   DeriveDataTypeable
+                        DeriveGeneric
+                        GeneralizedNewtypeDeriving
+                        OverloadedStrings
+                        RecordWildCards
+                        TypeApplications
