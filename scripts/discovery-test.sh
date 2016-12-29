@@ -56,7 +56,6 @@ echo "peer2=$peer2"
 
 echo "$scenario" | while read line; do
     if [[ $line =~ ^group[[:space:]]([0-9]*) ]]; then
-        echo "Executing group ${BASH_REMATCH[1]}"
         launch_group ${BASH_REMATCH[1]}
     elif [[ $line =~ ^sleep[[:space:]]([0-9]+) ]]; then
         echo "Sleep ${BASH_REMATCH[1]}"
