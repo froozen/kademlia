@@ -57,9 +57,6 @@ data Command = Dump String -- ^ Dump peers list to the file with name log/<name>
 kIdLength :: Integral a => a
 kIdLength = 20
 
-kPrefixLength :: Integral a => a
-kPrefixLength = 0
-
 randomSeed :: Integral a => a
 randomSeed = 123
 
@@ -123,10 +120,11 @@ main = do
     args <- getArgs
     let k         = read $ args !! 0
         rSharing  = read $ args !! 1
-        prefixLen = read $ args !! 2
-        nodeIndex = read $ args !! 3
-        peerIndex = read $ args !! 4
-        groups    = map read $ drop 5 args
+        pingTime  = read $ args !! 2
+        prefixLen = read $ args !! 3
+        nodeIndex = read $ args !! 4
+        peerIndex = read $ args !! 5
+        groups    = map read $ drop 6 args
         ports     = generatePorts groups
         keys      = evalRand (generateKeys prefixLen groups) (mkStdGen randomSeed)
         port      = ports !! nodeIndex
@@ -135,8 +133,9 @@ main = do
         peerKey   = keys !! peerIndex
 
     let config = K.defaultConfig
-          { K.k = k
+          { K.k               = k
           , K.routingSharingN = rSharing
+          , K.pingTime        = pingTime
           }
 
     let logError = putStrLn . ("ERROR: " ++)
@@ -151,7 +150,7 @@ main = do
       when (r /= K.JoinSuccess) $
         putStrLn . ("Connection to peer failed "++) . show $ r
 
-    let state = NodeConfig { ncInstance = kInstance
+    let state = NodeConfig { ncInstance  = kInstance
                            , ncNodeIndex = nodeIndex
                            }
     commands <- map parseCommand . lines <$> getContents

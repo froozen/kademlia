@@ -4,7 +4,8 @@ scenario=$1
 prefix=$2
 
 if [ -z "$scenario" ]; then
-    scenario=0
+    echo "Usage: ./scripts/aggregate.sh <scenario_id> [log_prefix]"
+    exit 1
 fi
 
 if [ -z "$prefix" ]; then

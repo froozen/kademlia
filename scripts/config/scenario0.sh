@@ -13,6 +13,8 @@ export peer2=0
 # parameter of kademlia
 export k=5
 # parameter of kademlia
+export pingTime=10
+# parameter of kademlia
 export routingSharingN=0
 # Common prefix for keys for nodes from groups 1 and 2
 export prefixLen=17

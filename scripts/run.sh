@@ -3,7 +3,8 @@
 scenario=$1
 
 if [ -z "$scenario" ]; then
-    scenario=0
+    echo "Usage: ./scripts/run.sh <scenario_id>"
+    exit 1
 fi
 
 source ./scripts/config/scenario$scenario.sh
@@ -36,7 +37,8 @@ launch_group ()
     esac
 
     for i in `seq $start $end`; do
-        echo "$script" | stack exec discovery $k $routingSharingN $prefixLen $i $peer $n0 $n1 $n2 &>log/stdout$i.log &
+        echo "$script" | stack exec discovery $k $routingSharingN $pingTime \
+                               $prefixLen $i $peer $n0 $n1 $n2 &>log/stdout$i.log &
         sleep 0.25s
     done
 }
