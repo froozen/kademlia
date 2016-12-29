@@ -45,7 +45,7 @@ import           Data.Time.Clock.POSIX       (getPOSIXTime)
 import           GHC.Generics                (Generic)
 import           System.Random               (newStdGen)
 
-import           Network.Kademlia.Config     (KademliaConfig (..), defaultConfig, k)
+import           Network.Kademlia.Config     (KademliaConfig (..), usingConfig, defaultConfig, k)
 import           Network.Kademlia.Networking (KademliaHandle (..), expect, logError',
                                               send, startRecvProcess)
 import           Network.Kademlia.ReplyQueue (Reply (..), ReplyQueue (timeoutChan),
@@ -92,7 +92,7 @@ instance Binary i => Binary (KademliaSnapshot i)
 newInstance :: (Serialize i) =>
                i -> KademliaConfig -> KademliaHandle i a -> IO (KademliaInstance i a)
 newInstance nid cfg handle = do
-    tree <- atomically . newTVar . T.create $ nid
+    tree <- atomically $ newTVar (T.create nid `usingConfig` cfg)
     banned <- atomically . newTVar $ M.empty
     values <- if storeValues cfg then Just <$> (atomically . newTVar $ M.empty) else pure Nothing
     threads <- atomically . newTVar $ M.empty
@@ -100,24 +100,24 @@ newInstance nid cfg handle = do
 
 -- | Insert a Node into the NodeTree
 insertNode :: (Serialize i, Ord i) => KademliaInstance i a -> Node i -> IO ()
-insertNode inst@(KI _ (KS sTree _ _) _ _) node = do
+insertNode inst@(KI _ (KS sTree _ _) _ cfg) node = do
     unlessM (isNodeBanned inst $ nodeId node) $ atomically $ do
         tree <- readTVar sTree
-        writeTVar sTree . T.insert tree $ node
+        writeTVar sTree $ T.insert tree node `usingConfig` cfg
 
 -- | Signal a Node's timeout and retur wether it should be repinged
 timeoutNode :: (Serialize i, Ord i) => KademliaInstance i a -> i -> IO Bool
-timeoutNode (KI _ (KS sTree _ _) _ _) nid = atomically $ do
+timeoutNode (KI _ (KS sTree _ _) _ cfg) nid = atomically $ do
     tree <- readTVar sTree
-    let (newTree, pingAgain) = T.handleTimeout tree nid
+    let (newTree, pingAgain) = T.handleTimeout tree nid `usingConfig` cfg
     writeTVar sTree newTree
     return pingAgain
 
 -- | Lookup a Node in the NodeTree
 lookupNode :: (Serialize i, Ord i) => KademliaInstance i a -> i -> IO (Maybe (Node i))
-lookupNode (KI _ (KS sTree _ _) _ _) nid = atomically $ do
+lookupNode (KI _ (KS sTree _ _) _ cfg) nid = atomically $ do
     tree <- readTVar sTree
-    return . T.lookup tree $ nid
+    return $ T.lookup tree nid `usingConfig` cfg
 
 -- | Return all the Nodes an Instance has encountered so far
 dumpPeers :: KademliaInstance i a -> IO [Node i]
@@ -163,9 +163,9 @@ isNodeBanned (KI _ (KS _ banned _) _ _) nid = do
 
 -- | Mark node as banned
 banNode :: (Serialize i, Ord i) => KademliaInstance i a -> i -> BanState -> IO ()
-banNode (KI _ (KS sTree banned _) _ _) nid ban = atomically $ do
+banNode (KI _ (KS sTree banned _) _ cfg) nid ban = atomically $ do
     modifyTVar banned $ M.insert nid ban
-    modifyTVar sTree $ \t -> T.delete t nid
+    modifyTVar sTree $ \t -> T.delete t nid `usingConfig` cfg
 
 -- | Shows stored buckets, ordered by distance to this node
 viewBuckets :: KademliaInstance i a -> IO [[Node i]]
@@ -184,7 +184,7 @@ start inst rq = do
 -- | The central process all Replys go trough
 receivingProcess :: (Show i, Serialize i, Ord i) =>
        KademliaInstance i a -> ReplyQueue i a -> IO ()
-receivingProcess inst@(KI h _ _ _) rq = forever . (`catch` logError' h) $ do
+receivingProcess inst@(KI h _ _ cfg) rq = forever . (`catch` logError' h) $ do
     reply <- readChan $ timeoutChan rq
 
     logInfo h $ "Received reply: " ++ show reply
@@ -218,13 +218,13 @@ receivingProcess inst@(KI h _ _ _) rq = forever . (`catch` logError' h) $ do
                 tree <- retrieve sTree
 
                 -- This node is not yet known
-                when (not . isJust . T.lookup tree $ originId) $ do
-                    let closestKnown = T.findClosest tree originId 1
-                    let ownId        = T.extractId tree
+                when (not . isJust $ T.lookup tree originId `usingConfig` cfg) $ do
+                    let closestKnown = T.findClosest tree originId 1 `usingConfig` cfg
+                    let ownId        = T.extractId tree `usingConfig` cfg
                     let self         = node { nodeId = ownId }
                     let bucket       = self:closestKnown
                     -- Find out closest known node
-                    let closestId    = nodeId . head . sortByDistanceTo bucket $ originId
+                    let closestId    = nodeId . head $ sortByDistanceTo bucket originId `usingConfig` cfg
 
                     -- This node can be assumed to be closest to the new node
                     when (ownId == closestId) $ do
@@ -315,7 +315,7 @@ spreadValueProcess (KI h (KS sTree _ sValues) _ cfg) = forever . (`catch` logErr
 
     where
           sendRequests tree key val = do
-            let closest = T.findClosest tree key k
+            let closest = T.findClosest tree key (k cfg) `usingConfig` cfg
             forM_ closest $ \node -> send h (peer node) (STORE key val)
 
           mapMWithKey :: (k -> v -> IO a) -> Map k v -> IO [a]
@@ -359,10 +359,10 @@ handleCommand _ _ _ = return ()
 -- | Return a KBucket with the closest Nodes to a supplied Id
 returnNodes :: (Serialize i, Ord i) =>
     Peer -> i -> KademliaInstance i a -> IO ()
-returnNodes peer nid (KI h (KS sTree _ _) _ KademliaConfig {..}) = do
+returnNodes peer nid (KI h (KS sTree _ _) _ cfg@KademliaConfig {..}) = do
     tree           <- atomically . readTVar $ sTree
     rndGen         <- newStdGen
-    let closest     = T.findClosest tree nid k
+    let closest     = T.findClosest tree nid k `usingConfig` cfg
     let randomNodes = T.pickupRandom tree routingSharingN closest rndGen
     let nodes       = closest ++ randomNodes
     liftIO $ send h peer (RETURN_NODES 1 nid nodes)
@@ -389,4 +389,4 @@ restoreInstance cfg handle snapshot = do
     return inst
   where
     emptyInstance = newInstance nid cfg handle
-    nid           = T.extractId $ spTree snapshot
+    nid           = T.extractId (spTree snapshot) `usingConfig` cfg

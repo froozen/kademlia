@@ -111,17 +111,17 @@ replyQueueChecks = testGroup "Network.Kademlia.ReplyQueue" [
 
 implementationChecks :: TestTree
 implementationChecks = testGroup "Network.Kademlia.Implementation" [
-      QC.testProperty "Joining the Network works"
+       QC.testProperty "Joining the Network works"
          joinCheck
-    , QC.testProperty "Joining the Network full works"
+     , QC.testProperty "Joining the Network full works"
          joinFullCheck
-    , QC.testProperty "ID clashes are detected"
+     , QC.testProperty "ID clashes are detected"
          idClashCheck
-    , QC.testProperty "Join network to banned node works"
+     , QC.testProperty "Join network to banned node works"
          joinBannedCheck
-    , QC.testProperty "Storing and looking up values works"
+     , QC.testProperty "Storing and looking up values works"
         storeAndLookupCheck
-    , QC.testProperty "Looking up Nodes works"
+     , QC.testProperty "Looking up Nodes works"
         lookupNodesCheck
     ]
 

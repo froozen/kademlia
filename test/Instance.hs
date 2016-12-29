@@ -214,8 +214,7 @@ banNodeCheck = do
 
 -- Snapshot is serialized and deserealised well
 snapshotCheck :: NodeBunch IdType -> IdType -> [BanState] -> Property
-snapshotCheck = withTree $
-    \tree nodes bans ->
+snapshotCheck = withTree $ \tree nodes -> return $ \bans ->
         let banned = M.fromList $ zip (map nodeId nodes) bans
             sp     = KSP tree banned
             sp'    = decode . encode $ sp

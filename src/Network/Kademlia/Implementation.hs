@@ -29,7 +29,7 @@ import qualified Data.Map                    as M
 import           Data.Maybe                  (fromJust)
 import           Data.Word                   (Word8)
 
-import           Network.Kademlia.Config     (KademliaConfig (..), k)
+import           Network.Kademlia.Config     (KademliaConfig (..), usingConfig)
 import           Network.Kademlia.Instance   (KademliaInstance (..), KademliaState (..),
                                               insertNode, isNodeBanned)
 import           Network.Kademlia.Networking (expect, send)
@@ -66,7 +66,7 @@ lookup inst nid = runLookup go inst nid
                 polled <- gets polled
                 let rest = polled \\ known
                 unless (null rest) $ do
-                    let cachePeer = peer . head . sortByDistanceTo rest $ nid
+                    let cachePeer = peer . head $ sortByDistanceTo rest nid `usingConfig` config inst
                     liftIO . send (handle inst) cachePeer . STORE nid $ value
 
                 -- Return the value
@@ -121,11 +121,12 @@ store inst key val = runLookup go inst key
 
             unless (null polled) $ do
                 let h = handle inst
+                    k' = k $ config inst
                     -- Don't select more than k peers
-                    peerNum = if length polled > k then k else length polled
+                    peerNum = if length polled > k' then k' else length polled
                     -- Select the peers closest to the key
                     storePeers =
-                        map peer . take peerNum . sortByDistanceTo polled $ key
+                        map peer . take peerNum $ sortByDistanceTo polled key `usingConfig` config inst
 
                 -- Send them a STORE command
                 forM_ storePeers $
@@ -158,8 +159,8 @@ joinNetwork inst node = ownId >>= runLookup go inst
           nodeDown = return NodeDown
 
           -- Retrieve your own id
-          ownId =
-            fmap T.extractId . atomically . readTVar .  sTree . state $ inst
+          ownId = (`usingConfig` config inst) . T.extractId <$>
+            (atomically . readTVar .  sTree . state $ inst)
 
           -- Also insert all returned nodes to our bucket (see [CSL-258])
           checkSignal (Signal _ (RETURN_NODES _ _ nodes)) = do
@@ -250,7 +251,7 @@ startLookup cfg signalAction cancel onSignal = do
     nid   <- gets targetId
 
     -- Find the three nodes closest to the supplied id
-    case T.findClosest tree nid (nbLookupNodes cfg) of
+    case T.findClosest tree nid (nbLookupNodes cfg) `usingConfig` cfg of
             [] -> cancel
             closest -> do
                 -- Add them to the list of known nodes. At this point, it will
@@ -337,22 +338,23 @@ continueLookup :: (Serialize i, Eq i) => [Node i]
                -> (Node i -> LookupM i a ()) -> LookupM i a b -> LookupM i a b
                -> LookupM i a b
 continueLookup nodes signalAction continue end = do
+    inst    <- gets inst
     known   <- gets known
     nid     <- gets targetId
     pending <- gets pending
     polled  <- gets polled
 
     -- Pick the k closest known nodes, that haven't been polled yet
-    let newKnown = take k . flip sortByDistanceTo nid . filter (`notElem` polled)
+    let newKnown = take (k $ config inst) . (`usingConfig` config inst) . flip sortByDistanceTo nid . filter (`notElem` polled)
                       $ nodes ++ known
 
     -- Check if k closest nodes have been polled already
-    polledNeighbours <- allClosestPolled newKnown
+    polledNeighbours <- allClosestPolled inst newKnown
     if (not . null $ newKnown) && not polledNeighbours
         then do
             -- Send signal to the closest node, that hasn't
             -- been polled yet
-            let next = head . sortByDistanceTo newKnown $ nid
+            let next = head $ sortByDistanceTo newKnown nid `usingConfig` config inst
             signalAction next
 
             -- Update known
@@ -368,18 +370,18 @@ continueLookup nodes signalAction continue end = do
             -- Stop recursive lookup
             else end
 
-    where allClosestPolled known = do
+    where allClosestPolled inst known = do
             polled       <- gets polled
-            closestKnown <- closest known
+            closestKnown <- closest inst known
 
             return . all (`elem` polled) $ closestKnown
 
-          closest known = do
+          closest inst known = do
             cid    <- gets targetId
             polled <- gets polled
 
             -- Return the k closest nodes, the lookup had contact with
-            return . take k . sortByDistanceTo (known ++ polled) $ cid
+            return . take (k $ config inst) $ sortByDistanceTo (known ++ polled) cid `usingConfig` config inst
 
 -- Send a signal to a node
 sendSignal :: Ord i
