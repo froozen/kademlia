@@ -119,8 +119,8 @@ test-suite library-test
                         TypeApplications
 
 
-executable discovery
-  main-is:             Discovery.hs
+executable discovery-test
+  main-is:             DiscoveryTest.hs
   build-depends:       base                >= 4.7 && < 5
                      , binary              >= 0.8.3
                      , bytestring          >= 0.10.2 && < 0.11

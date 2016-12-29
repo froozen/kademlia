@@ -37,7 +37,7 @@ launch_group ()
     esac
 
     for i in `seq $start $end`; do
-        echo "$script" | stack exec discovery $k $routingSharingN $pingTime \
+        echo "$script" | stack exec discovery-test $k $routingSharingN $pingTime \
                                $prefixLen $i $peer $n0 $n1 $n2 &>log/stdout$i.log &
         sleep 0.25s
     done
