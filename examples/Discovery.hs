@@ -124,9 +124,11 @@ connectToPeer inct peerPort peerId = do
 main :: IO ()
 main = do
     args <- getArgs
-    let nodeIndex = read $ args !! 0
-        peerIndex = read $ args !! 1
-        groups    = map read $ drop 2 args
+    let k         = read $ args !! 0
+        rSharing  = read $ args !! 1
+        nodeIndex = read $ args !! 2
+        peerIndex = read $ args !! 3
+        groups    = map read $ drop 4 args
         ports     = generatePorts groups
         keys      = evalRand (generateKeys groups) (mkStdGen randomSeed)
         port      = ports !! nodeIndex
@@ -134,7 +136,17 @@ main = do
         peerPort  = fromIntegral $ ports !! peerIndex
         peerKey   = keys !! peerIndex
 
-    kInstance <- K.create port . KademliaID $ key
+    let config = K.defaultConfig
+          { K.k = k
+          , K.routingSharingN = rSharing
+          }
+
+    let logError = putStrLn . ("ERROR: " ++)
+    let logInfo = putStrLn . ("INFO: " ++)
+
+    putStrLn $ "peerIndex " ++ show peerIndex
+    putStrLn $ "peerPort " ++ show peerPort
+    kInstance <- K.createL port (KademliaID key) config logInfo logError
     when (peerPort /= 0) $ do
       putStrLn "Connecting to peer"
       r <- connectToPeer kInstance peerPort peerKey
