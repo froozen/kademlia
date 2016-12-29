@@ -295,7 +295,6 @@ waitForReply cancel onSignal = do
                                modify $ \s -> s { pending = M.adjust (+1) node $ pending s }
                                let h = handle inst
                                    reg = RR [R_RETURN_NODES nid] (nodeId node)
-                               return ()
                                liftIO $ expect h reg chan
                       _ -> removeFromPending node
                     -- Call the signal handler

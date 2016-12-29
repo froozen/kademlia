@@ -32,7 +32,7 @@ import           GHC.Generics            (Generic)
 import           System.Random           (StdGen)
 import           System.Random.Shuffle   (shuffleM)
 
-import           Network.Kademlia.Config (WithConfig, getConfig, k, bucketSize)
+import           Network.Kademlia.Config (WithConfig, getConfig, k, cacheSize, pingLimit)
 import           Network.Kademlia.Types  (ByteStruct, Node (..), Serialize (..),
                                           fromByteStruct, sortByDistanceTo, toByteStruct)
 
@@ -137,11 +137,11 @@ delete tree nid = modifyAt tree nid f
 --  the node again.
 handleTimeout :: (Serialize i, Eq i) => NodeTree i -> i -> WithConfig (NodeTree i, Bool)
 handleTimeout tree nid = do
-    bucketSize <- bucketSize <$> getConfig
+    pingLimit <- pingLimit <$> getConfig
     let f _ _ (nodes, cache) = return $ case L.find (idMatches nid . fst) nodes of
             -- Delete a node that exceeded the limit. Don't contact it again
             --   as it is now considered dead
-            Just x@(_, bs) | bs == bucketSize -> (Bucket (L.delete x $ nodes, cache), False)
+            Just x@(_, bs) | bs == pingLimit -> (Bucket (L.delete x $ nodes, cache), False)
             -- Increment the timeoutCount
             Just x@(n, timeoutCount) ->
                  (Bucket ((n, timeoutCount + 1) : L.delete x nodes, cache), True)
@@ -163,7 +163,7 @@ refresh node (nodes, cache) =
 insert :: (Serialize i, Eq i) => NodeTree i -> Node i -> WithConfig (NodeTree i)
 insert tree node = do
     k <- k <$> getConfig
-    bucketSize <- bucketSize <$> getConfig
+    cacheSize <- cacheSize <$> getConfig
     let needsSplit depth valid (nodes, _) = do
           maxDepth <- ((subtract 1) . length <$> toByteStruct (nodeId node))
           return $
@@ -172,7 +172,10 @@ insert tree node = do
             -- The bucket is full
             length nodes >= k &&
             -- The bucket may be split
-            (depth < 5 || valid) && depth <= maxDepth
+            -- @georgeee: I peered at this code for ~30-40 mins.
+            --   I clearly don't understand what was the reason to introduce `depth < 5`.
+            --   Perhaps some kind of +\- 1, to not care about corner case
+           (depth < 5 || valid) && depth <= maxDepth
 
         doInsert _ _ b@(nodes, cache)
           -- Refresh an already existing node
@@ -182,7 +185,7 @@ insert tree node = do
           -- Move the node to the first spot, if it's already cached
           | node `elem` cache = return $ Bucket (nodes, node : L.delete node cache)
           -- Cache the node and drop older ones, if necessary
-          | otherwise = return $ Bucket (nodes, node : take bucketSize cache)
+          | otherwise = return $ Bucket (nodes, node : take (cacheSize - 1) cache)
     r <- applyAt tree (nodeId node) needsSplit
     if r
     -- Split the tree before inserting, when it makes sense
