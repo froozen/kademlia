@@ -174,6 +174,9 @@ insert tree node = if applyAt tree (nodeId node) needsSplit
                 -- The bucket is full
                 length nodes >= k &&
                 -- The bucket may be split
+                -- @georgeee: I peered at this code for ~30-40 mins.
+                --   I clearly don't understand what was the reason to introduce `depth < 5`.
+                --   Perhaps some kind of +\- 1, to not care about corner case
                 (depth < 5 || valid) && depth <= maxDepth
 
           doInsert _ _ b@(nodes, cache)
