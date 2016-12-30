@@ -122,7 +122,7 @@ viewCheck = withTree $ \tree nodes -> do
     let view = T.toView tree
     sorted <- mapM (\bucket -> sort <$> mapM (distance originId . nodeId) bucket) view
               -- distance to this node increases from bucket to bucket
-    return $  increases sorted
+    return $  increases (concat sorted)
               -- and view contains all nodes from tree
            && sameElements nodes (concat view)
   where
