@@ -129,6 +129,8 @@ module Network.Kademlia
        , isNodeBanned
        , takeSnapshot
        , restoreInstance
+       , distance
+       , sortByDistanceTo
        , JoinResult(..)
        , Serialize(..)
        , Node(..)
