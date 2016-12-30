@@ -131,6 +131,7 @@ module Network.Kademlia
        , restoreInstance
        , distance
        , sortByDistanceTo
+       , usingKademliaInstance
        , JoinResult(..)
        , Serialize(..)
        , Node(..)
@@ -175,3 +176,7 @@ createL port id' cfg logInfo logError = do
 -- | Stop a KademliaInstance by closing it
 close :: KademliaInstance i a -> IO ()
 close = closeK . handle
+
+-- | Run WithConfig action using given kademlia instance
+usingKademliaInstance :: WithConfig a -> KademliaInstance i v -> a
+usingKademliaInstance f = usingConfig f . config
