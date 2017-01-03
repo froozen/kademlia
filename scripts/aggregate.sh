@@ -12,7 +12,7 @@ if [ -z "$prefix" ]; then
     prefix=dump_final
 fi
 
-source ./scripts/config/scenario$scenario.sh
+source ./scripts/config/scenario_$scenario.sh
 
 lsids()
 {

@@ -7,7 +7,7 @@ if [ -z "$scenario" ]; then
     exit 1
 fi
 
-source ./scripts/config/scenario$scenario.sh
+source ./scripts/config/scenario_$scenario.sh
 
 mkdir -p log
 rm -f log/*
