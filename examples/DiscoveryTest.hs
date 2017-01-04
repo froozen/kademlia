@@ -13,7 +13,7 @@ import           GHC.Conc                  (threadDelay)
 import           Network                   (PortNumber)
 import qualified Network.Kademlia          as K
 import           System.Environment        (getArgs)
-import           System.Random             (mkStdGen)
+import           System.Random             (mkStdGen, randomRIO)
 
 data Pong = Pong
           deriving (Eq, Show)
@@ -47,6 +47,8 @@ instance Binary Pong where
 data NodeConfig = NodeConfig
     { ncInstance  :: KademliaInstance
     , ncNodeIndex :: Int
+    , ncPort      :: PortNumber
+    , ncKey       :: KademliaID
     }
 
 type NodeMode r = S.StateT NodeConfig IO r
@@ -107,7 +109,13 @@ executeCommand (Dump name) = do
     lift $ putStrLn "Executing dump command"
     inct <- ncInstance <$> S.get
     idx <- ncNodeIndex <$> S.get
-    lift $ appendFile ("log/" ++ name ++ show idx ++ ".log") . listToStr  =<< K.dumpPeers inct
+    buckets <- lift $ K.viewBuckets inct
+    ourNode <- K.Node . K.Peer "127.0.0.1" . ncPort <$> S.get <*> (ncKey <$> S.get)
+    edges <- lift . mapM (\l -> (l !!) <$> randomRIO (0, length l - 1))
+                  . filter (\l -> ourNode `notElem` l && not (null l))
+                  $ buckets
+    lift $ appendFile ("log/" ++ name ++ show idx ++ ".log") $
+        (listToStr $ concat buckets) ++ (unlines $ map (("edge " ++) . show) edges)
 
 connectToPeer :: KademliaInstance -> PortNumber -> B.ByteString -> IO K.JoinResult
 connectToPeer inct peerPort peerId = do
@@ -151,6 +159,8 @@ main = do
 
     let state = NodeConfig { ncInstance  = kInstance
                            , ncNodeIndex = nodeIndex
+                           , ncPort      = fromIntegral port
+                           , ncKey       = KademliaID key
                            }
     commands <- map parseCommand . lines <$> getContents
     _ <- S.runStateT (mapM_ executeCommand commands) state
