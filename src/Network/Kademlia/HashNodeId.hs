@@ -19,7 +19,7 @@ import           Network.Kademlia.Types (Serialize (..))
 newtype Nonce = Nonce B.ByteString
 
 newtype HashId = HashId B.ByteString
-    deriving (Show,Eq)
+    deriving (Show, Eq, Ord)
 
 instance Serialize HashId where
     toBS (HashId h) = h
