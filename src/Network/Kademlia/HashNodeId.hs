@@ -1,6 +1,6 @@
 module Network.Kademlia.HashNodeId
        ( Nonce
-       , HashId
+       , HashId (..)
        , genNonce
        , hashIdLength
        , hashAddress
