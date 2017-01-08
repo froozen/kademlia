@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Size of group 0
-export n0=10
+export n0=80
 # Size of group 1
 export n1=10
 # Initial peer for group 1
@@ -20,6 +20,8 @@ export routingSharingN=0
 export prefixLen=17
 # Time in seconds to wait until routing tables stabilize
 export t=60
+# Number of edges to dump for each bucket
+export bctEdges=1
 
 let t2=$t*2; export t2
 

@@ -1,7 +1,7 @@
 import           Control.Arrow             (first)
 import           Control.Monad             (when)
 import           Control.Monad.Random      (Rand, RandomGen, evalRand,
-                                            getRandom)
+                                            getRandom, evalRandIO)
 import           Control.Monad.Trans       (lift)
 import qualified Control.Monad.Trans.State as S
 import           Data.Binary               (Binary (..), decodeOrFail, encode,
@@ -13,7 +13,8 @@ import           GHC.Conc                  (threadDelay)
 import           Network                   (PortNumber)
 import qualified Network.Kademlia          as K
 import           System.Environment        (getArgs)
-import           System.Random             (mkStdGen, randomRIO)
+import           System.Random             (mkStdGen)
+import           System.Random.Shuffle     (shuffleM)
 
 data Pong = Pong
           deriving (Eq, Show)
@@ -49,6 +50,7 @@ data NodeConfig = NodeConfig
     , ncNodeIndex :: Int
     , ncPort      :: PortNumber
     , ncKey       :: KademliaID
+    , ncBctEdges  :: Int
     }
 
 type NodeMode r = S.StateT NodeConfig IO r
@@ -101,6 +103,10 @@ generatePorts _            = error "there should be exactly 3 groups"
 listToStr :: Show s => [s] -> String
 listToStr = unlines . map show
 
+takeRandom :: Int -> [a] -> IO [a]
+takeRandom x l | x > length l = takeRandom (length l) l
+               | otherwise    = take x <$> evalRandIO (shuffleM l)
+
 executeCommand :: Command -> NodeMode ()
 executeCommand (Sleep t) = do
     lift $ putStrLn "Executing sleep command"
@@ -109,9 +115,11 @@ executeCommand (Dump name) = do
     lift $ putStrLn "Executing dump command"
     inct <- ncInstance <$> S.get
     idx <- ncNodeIndex <$> S.get
+    bctEdges <- ncBctEdges <$> S.get
     buckets <- lift $ K.viewBuckets inct
     ourNode <- K.Node . K.Peer "127.0.0.1" . ncPort <$> S.get <*> (ncKey <$> S.get)
-    edges <- lift . mapM (\l -> (l !!) <$> randomRIO (0, length l - 1))
+    edges <- lift . fmap concat
+                  . mapM (\l -> takeRandom bctEdges l)
                   . filter (\l -> ourNode `notElem` l && not (null l))
                   $ buckets
     lift $ appendFile ("log/" ++ name ++ show idx ++ ".log") $
@@ -124,14 +132,10 @@ connectToPeer inct peerPort peerId = do
 
 main :: IO ()
 main = do
-    args <- getArgs
-    let k         = read $ args !! 0
-        rSharing  = read $ args !! 1
-        pingTime  = read $ args !! 2
-        prefixLen = read $ args !! 3
-        nodeIndex = read $ args !! 4
-        peerIndex = read $ args !! 5
-        groups    = map read $ drop 6 args
+    (k : rSharing : pingTime :
+     prefixLen : nodeIndex :
+     peerIndex : bctEdges : groups) <- map read <$> getArgs
+    let
         ports     = generatePorts groups
         keys      = evalRand (generateKeys prefixLen groups) (mkStdGen randomSeed)
         port      = ports !! nodeIndex
@@ -161,6 +165,7 @@ main = do
                            , ncNodeIndex = nodeIndex
                            , ncPort      = fromIntegral port
                            , ncKey       = KademliaID key
+                           , ncBctEdges  = bctEdges
                            }
     commands <- map parseCommand . lines <$> getContents
     _ <- S.runStateT (mapM_ executeCommand commands) state

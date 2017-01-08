@@ -20,6 +20,8 @@ export pingTime=10
 export prefixLen=0
 # Time in seconds to wait until routing tables stabilize
 export t=60
+# Number of edges to dump for each bucket
+export bctEdges=1
 
 let t2=$t*2; export t2
 
