@@ -30,7 +30,7 @@ import           Network.Socket              (AddrInfo (..), AddrInfoFlag (AI_PA
                                               Socket, SocketOption (ReuseAddr),
                                               SocketType (Datagram), addrAddress,
                                               addrFlags, bind, close, defaultHints,
-                                              defaultProtocol, getAddrInfo,
+                                              defaultProtocol, getAddrInfo, Family(..),
                                               setSocketOption, socket, withSocketsDo)
 import qualified Network.Socket.ByteString   as S
 import           System.IO.Error             (ioError, userError)
@@ -69,9 +69,12 @@ openOnL :: (Show i, Serialize i, Serialize a) => String -> i -> Int
        -> IO (KademliaHandle i a)
 openOnL port id' lim rq logInfo logError = withSocketsDo $ do
     -- Get addr to bind to
-    (serveraddr:_) <- getAddrInfo
+    serveraddrs <- getAddrInfo
                  (Just (defaultHints {addrFlags = [AI_PASSIVE]}))
                  Nothing (Just port)
+
+    -- TODO: support IPV6 by binding to two sockets
+    let serveraddr = head $ filter (\a -> addrFamily a == AF_INET) serveraddrs
 
     -- Create socket and bind to it
     sock <- socket (addrFamily serveraddr) Datagram defaultProtocol
