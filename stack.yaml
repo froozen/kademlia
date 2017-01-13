@@ -3,7 +3,7 @@ packages:
 - '.'
 nix:
   enable: false
-  packages: []
+  packages: [gmp]
 extra-deps: []
 flags: {}
 extra-package-dbs: []

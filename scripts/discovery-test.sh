@@ -7,7 +7,7 @@ if [ -z "$scenario" ]; then
     exit 1
 fi
 
-source ./scripts/config/scenario$scenario.sh
+source ./scripts/config/scenario_$scenario.sh
 
 mkdir -p log
 rm -f log/*
@@ -38,7 +38,7 @@ launch_group ()
 
     for i in `seq $start $end`; do
         echo "$script" | stack exec discovery-test $k $routingSharingN $pingTime \
-                               $prefixLen $i $peer $n0 $n1 $n2 &>log/stdout$i.log &
+                               $prefixLen $i $peer $bctEdges $n0 $n1 $n2 &>log/stdout$i.log &
         sleep 0.25s
     done
 }
@@ -53,6 +53,7 @@ echo "routingSharingN=$routingSharingN"
 echo "T=$t"
 echo "peer1=$peer1"
 echo "peer2=$peer2"
+echo "bctEdges=$bctEdges"
 
 echo "$scenario" | while read line; do
     if [[ $line =~ ^group[[:space:]]([0-9]*) ]]; then
