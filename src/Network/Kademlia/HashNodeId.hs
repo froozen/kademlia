@@ -53,13 +53,13 @@ genNonce = Nonce <$> getRandomBytes nonceLen
 
 -- | Calculate ID based on addresses
 hashAddress :: Nonce -> HashId
-hashAddress nonce@(Nonce ad) = HashId $ B.concat [ad, hashingFct ad (nonceToSalt nonce)]
+hashAddress nonce@(Nonce ad) = HashId $ B.concat [hashingFct ad (nonceToSalt nonce), ad]
 
 -- | Verify ID
 verifyAddress :: B.ByteString -> Bool
 verifyAddress bs
     | B.length bs /= hashIdLength = False
     | otherwise                   =
-        let (n, _) = B.splitAt nonceLen bs
+        let (_, n) = B.splitAt outputLen bs
             hid    = hashAddress (Nonce n)
          in hid == HashId bs
