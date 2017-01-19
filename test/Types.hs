@@ -5,24 +5,28 @@ Description : Tests for Network.Kademlia.Types
 Tests specific to Network.Kademlia.Types.
 -}
 
-module Types where
+module Types
+       ( fromByteStructCheck
+       , toByteStructCheck
+       ) where
 
-import Test.QuickCheck
+import           Data.Bits               (testBit)
+import qualified Data.ByteString         as B
+import           Test.QuickCheck         ()
 
-import qualified Data.ByteString as B
-import Data.Bits (testBit)
+import           Network.Kademlia.Types  (fromByteStruct, toBS, toByteStruct)
+import           Network.Kademlia.Config (usingConfig, defaultConfig)
 
-import TestTypes
-import Network.Kademlia.Types
+import           TestTypes               (IdType)
 
 -- | Checks wether toByteStruct converts corretctly
 toByteStructCheck :: IdType -> Bool
-toByteStructCheck id = foldl foldingFunc True [0..length converted - 1]
-    where converted = toByteStruct id
-          words = B.unpack . toBS $ id
-          foldingFunc b i = b && (converted !! i == access words i)
+toByteStructCheck nid = foldl foldingFunc True [0..length converted - 1]
+    where converted = toByteStruct nid `usingConfig` defaultConfig
+          byteWords = B.unpack . toBS $ nid
+          foldingFunc b i = b && (converted !! i == access byteWords i)
           access ws i = testBit (ws !! (i `div` 8)) (i `mod` 8)
 
 -- | Checks wether fromByteStruct converts corretctly
 fromByteStructCheck :: IdType -> Bool
-fromByteStructCheck id = id == (fromByteStruct . toByteStruct $ id)
+fromByteStructCheck nid = nid == (fromByteStruct =<< toByteStruct nid) `usingConfig` defaultConfig

@@ -5,19 +5,25 @@ Description : Tests for Network.Kademlia.ReplyQueue
 Tests specific to Network.Kademlia.ReplyQueue
 -}
 
-module ReplyQueue where
+module ReplyQueue
+       ( removedCheck
+       , repliesCheck
+       ) where
 
-import Test.QuickCheck
-import Test.QuickCheck.Monadic
 
-import Control.Concurrent.Chan
-import Control.Concurrent.STM
-import Data.Maybe (isJust)
+import           Control.Concurrent.Chan     (Chan, getChanContents, newChan)
+import           Control.Concurrent.STM      (atomically, readTVar)
+import           Data.Maybe                  (isJust)
 
-import Network.Kademlia.ReplyQueue
-import Network.Kademlia.Types
+import           Test.QuickCheck             (Property)
+import           Test.QuickCheck.Monadic     (assert, monadicIO, pre, run)
 
-import TestTypes
+import           Network.Kademlia.ReplyQueue (Reply (..), ReplyRegistration (..),
+                                              ReplyType (..), dispatch, emptyReplyQueue,
+                                              queue, register)
+import           Network.Kademlia.Types      (Command (..), Node (..), Signal (..))
+
+import           TestTypes                   (IdType (..))
 
 -- | Check wether registered reply handlers a used
 repliesCheck :: Signal IdType String -> Signal IdType String -> Property
@@ -64,11 +70,11 @@ removedCheck sig = monadicIO $ do
     case reg of
         -- Discard the test case
         Nothing -> pre False
-        Just reg -> do
+        Just reg' -> do
             removed <- run $ do
                 rq <- emptyReplyQueue
                 chan <- newChan :: IO (Chan (Reply IdType String))
-                register reg rq chan
+                register reg' rq chan
                 dispatch (Answer sig) rq
                 fmap null (atomically . readTVar . queue $ rq)
             assert removed
@@ -81,7 +87,7 @@ toRegistration sig = case rType . command $ sig of
     where origin = nodeId . source $ sig
 
           rType :: Command i a -> Maybe (ReplyType i)
-          rType  PONG               = Just  R_PONG
-          rType (RETURN_VALUE id _) = Just (R_RETURN_VALUE id)
-          rType (RETURN_NODES id _) = Just (R_RETURN_NODES id)
-          rType _ = Nothing
+          rType  PONG                  = Just  R_PONG
+          rType (RETURN_VALUE nid _)   = Just (R_RETURN_VALUE nid)
+          rType (RETURN_NODES _ nid _) = Just (R_RETURN_NODES nid)
+          rType _                      = Nothing
