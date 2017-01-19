@@ -117,6 +117,7 @@ module Network.Kademlia
        , KademliaSnapshot
        , create
        , createL
+       , createLFromSnapshot
        , defaultConfig
        , close
        , I.lookup
@@ -144,6 +145,7 @@ import           Network.Kademlia.Instance
 import           Network.Kademlia.Networking
 import           Network.Kademlia.ReplyQueue
 import           Network.Kademlia.Types
+import qualified Network.Kademlia.Tree as T
 import           Prelude                         hiding (lookup)
 
 -- | Create a new KademliaInstance corresponding to a given Id on a given port
@@ -172,6 +174,23 @@ createL port id' cfg logInfo logError = do
     start inst rq
     return inst
 
+-- | Create instance from snapshot with logging
+createLFromSnapshot
+    :: (Show i, Serialize i, Ord i, Serialize a, Eq a)
+    => Int
+    -> KademliaConfig
+    -> KademliaSnapshot i
+    -> (String -> IO ())
+    -> (String -> IO ())
+    -> IO (KademliaInstance i a)
+createLFromSnapshot port cfg snapshot logInfo logError = do
+    rq <- emptyReplyQueueL logInfo logError
+    let lim = msgSizeLimit cfg
+    let id' = T.extractId (spTree snapshot) `usingConfig` cfg
+    h <- openOnL (show port) id' lim rq logInfo logError
+    inst <- restoreInstance cfg h snapshot
+    start inst rq
+    return inst
 
 -- | Stop a KademliaInstance by closing it
 close :: KademliaInstance i a -> IO ()
