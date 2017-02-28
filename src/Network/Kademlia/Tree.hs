@@ -27,6 +27,7 @@ import           Prelude                 hiding (lookup)
 
 import           Control.Monad.Random    (evalRand)
 import           Data.Binary             (Binary)
+import           Data.Int                (Int64)
 import qualified Data.List               as L (delete, find, genericTake)
 import           GHC.Generics            (Generic)
 import           System.Random           (StdGen)
@@ -39,11 +40,18 @@ import           Network.Kademlia.Types  (ByteStruct, Node (..), Serialize (..),
 data NodeTree i = NodeTree ByteStruct (NodeTreeElem i)
     deriving (Generic)
 
+data PingInfo = PingInfo {
+      pingTimes         :: Int
+    , lastSeenTimestamp :: Int64
+    } deriving (Generic, Eq)
+
 data NodeTreeElem i = Split (NodeTreeElem i) (NodeTreeElem i)
-                    | Bucket ([(Node i, Int)], [Node i])
+                    | Bucket ([(Node i, PingInfo)], [Node i])
     deriving (Generic)
 
-type NodeTreeFunction i a = Int -> Bool -> ([(Node i, Int)], [Node i]) -> WithConfig a
+type NodeTreeFunction i a = Int -> Bool -> ([(Node i, PingInfo)], [Node i]) -> WithConfig a
+
+instance Binary PingInfo
 
 instance Binary i => Binary (NodeTree i)
 
@@ -141,10 +149,10 @@ handleTimeout tree nid = do
     let f _ _ (nodes, cache) = return $ case L.find (idMatches nid . fst) nodes of
             -- Delete a node that exceeded the limit. Don't contact it again
             --   as it is now considered dead
-            Just x@(_, bs) | bs == pingLimit -> (Bucket (L.delete x $ nodes, cache), False)
+            Just x@(_, PingInfo bs _) | bs == pingLimit -> (Bucket (L.delete x $ nodes, cache), False)
             -- Increment the timeoutCount
-            Just x@(n, timeoutCount) ->
-                 (Bucket ((n, timeoutCount + 1) : L.delete x nodes, cache), True)
+            Just x@(n, PingInfo timeoutCount timestamp) ->
+                 (Bucket ((n, PingInfo (timeoutCount + 1) timestamp) : L.delete x nodes, cache), True)
             -- Don't contact an unknown node a second time
             Nothing -> (Bucket (nodes, cache), False)
     bothAt tree nid f
@@ -152,10 +160,11 @@ handleTimeout tree nid = do
 -- | Refresh the node corresponding to a supplied Id by placing it at the first
 --   index of it's KBucket and reseting its timeoutCount, then return a Bucket
 --   NodeTreeElem
-refresh :: Eq i => Node i -> ([(Node i, Int)], [Node i]) -> NodeTreeElem i
+refresh :: Eq i => Node i -> ([(Node i, PingInfo)], [Node i]) -> NodeTreeElem i
 refresh node (nodes, cache) =
          Bucket (case L.find (idMatches (nodeId node) . fst) nodes of
-            Just x@(n, _) -> (n, 0) : L.delete x nodes
+                   -- TODO(voit): Set correct timestamp
+            Just x@(n, _) -> (n, PingInfo 0 0) : L.delete x nodes
             _             -> nodes
             , cache)
 
@@ -181,7 +190,8 @@ insert tree node = do
           -- Refresh an already existing node
           | node `elem` map fst nodes = return $ refresh node b
           -- Simply insert the node, if the bucket isn't full
-          | length nodes < k = return $ Bucket ((node, 0):nodes, cache)
+          -- TODO(voit): Add timestamp
+          | length nodes < k = return $ Bucket ((node, PingInfo 0 0):nodes, cache)
           -- Move the node to the first spot, if it's already cached
           | node `elem` cache = return $ Bucket (nodes, node : L.delete node cache)
           -- Cache the node and drop older ones, if necessary
