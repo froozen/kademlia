@@ -101,9 +101,10 @@ newInstance nid cfg handle = do
 -- | Insert a Node into the NodeTree
 insertNode :: (Serialize i, Ord i) => KademliaInstance i a -> Node i -> IO ()
 insertNode inst@(KI _ (KS sTree _ _) _ cfg) node = do
+    currentTime <- floor <$> getPOSIXTime
     unlessM (isNodeBanned inst $ nodeId node) $ atomically $ do
         tree <- readTVar sTree
-        writeTVar sTree $ T.insert tree node `usingConfig` cfg
+        writeTVar sTree $ T.insert tree node currentTime `usingConfig` cfg
 
 -- | Signal a Node's timeout and retur wether it should be repinged
 timeoutNode :: (Serialize i, Ord i) => KademliaInstance i a -> i -> IO Bool
@@ -120,7 +121,7 @@ lookupNode (KI _ (KS sTree _ _) _ cfg) nid = atomically $ do
     return $ T.lookup tree nid `usingConfig` cfg
 
 -- | Return all the Nodes an Instance has encountered so far
-dumpPeers :: KademliaInstance i a -> IO [Node i]
+dumpPeers :: KademliaInstance i a -> IO [(Node i, Timestamp)]
 dumpPeers (KI _ (KS sTree _ _) _ _) = atomically $ do
     tree <- readTVar sTree
     return . T.toList $ tree
@@ -168,8 +169,10 @@ banNode (KI _ (KS sTree banned _) _ cfg) nid ban = atomically $ do
     modifyTVar sTree $ \t -> T.delete t nid `usingConfig` cfg
 
 -- | Shows stored buckets, ordered by distance to this node
-viewBuckets :: KademliaInstance i a -> IO [[Node i]]
-viewBuckets (KI _ (KS sTree _ _) _ _) = T.toView <$> readTVarIO sTree
+viewBuckets :: KademliaInstance i a -> IO [[(Node i, Timestamp)]]
+viewBuckets (KI _ (KS sTree _ _) _ _) = do
+    currentTime <- getPOSIXTime
+    T.toView <$> readTVarIO sTree
 
 -- | Start the background process for a KademliaInstance
 start :: (Show i, Serialize i, Ord i, Serialize a, Eq a) =>

@@ -25,16 +25,16 @@ module Network.Kademlia.Tree
 
 import           Prelude                 hiding (lookup)
 
+import           Control.Arrow           (second)
 import           Control.Monad.Random    (evalRand)
 import           Data.Binary             (Binary)
-import           Data.Int                (Int64)
 import qualified Data.List               as L (delete, find, genericTake)
 import           GHC.Generics            (Generic)
 import           System.Random           (StdGen)
 import           System.Random.Shuffle   (shuffleM)
 
 import           Network.Kademlia.Config (WithConfig, getConfig, k, cacheSize, pingLimit)
-import           Network.Kademlia.Types  (ByteStruct, Node (..), Serialize (..),
+import           Network.Kademlia.Types  (ByteStruct, Timestamp, Node (..), Serialize (..),
                                           fromByteStruct, sortByDistanceTo, toByteStruct)
 
 data NodeTree i = NodeTree ByteStruct (NodeTreeElem i)
@@ -42,7 +42,7 @@ data NodeTree i = NodeTree ByteStruct (NodeTreeElem i)
 
 data PingInfo = PingInfo {
       pingTimes         :: Int
-    , lastSeenTimestamp :: Int64
+    , lastSeenTimestamp :: Timestamp
     } deriving (Generic, Eq)
 
 data NodeTreeElem i = Split (NodeTreeElem i) (NodeTreeElem i)
@@ -169,8 +169,8 @@ refresh node (nodes, cache) =
             , cache)
 
 -- | Insert a node into a NodeTree
-insert :: (Serialize i, Eq i) => NodeTree i -> Node i -> WithConfig (NodeTree i)
-insert tree node = do
+insert :: (Serialize i, Eq i) => NodeTree i -> Node i -> Timestamp -> WithConfig (NodeTree i)
+insert tree node timestamp = do
     k <- k <$> getConfig
     cacheSize <- cacheSize <$> getConfig
     let needsSplit depth valid (nodes, _) = do
@@ -200,7 +200,7 @@ insert tree node = do
     if r
     -- Split the tree before inserting, when it makes sense
     then let splitTree = split tree . nodeId $ node
-         in flip insert node =<< splitTree
+         in (\t -> insert t node timestamp) =<< splitTree
     -- Insert the node
     else modifyAt tree (nodeId node) doInsert
 
@@ -236,7 +236,7 @@ pickupRandom
 pickupRandom _ 0 _ _ = []
 pickupRandom tree n ignoreList randGen =
     let treeList      = toList tree
-        notIgnored     = filter (`notElem` ignoreList) treeList
+        notIgnored    = filter (`notElem` ignoreList) $ map fst treeList
         shuffledNodes = evalRand (shuffleM notIgnored) randGen
     in L.genericTake n shuffledNodes
 
@@ -285,17 +285,17 @@ idMatches :: (Eq i) => i -> Node i -> Bool
 idMatches nid node = nid == nodeId node
 
 -- | Turn the NodeTree into a list of buckets, ordered by distance to origin node
-toView :: NodeTree i -> [[Node i]]
+toView :: NodeTree i -> [[(Node i, Timestamp)]]
 toView (NodeTree bs treeElems) = go bs treeElems []
     where -- If the bit is 0, go left, then right
           go (False:is) (Split left right) = go is left . go is right
           -- Else go right first
           go (True:is)  (Split left right) = go is right . go is left
           go _          (Split _    _    ) = error "toView: unexpected Split"
-          go _          (Bucket (b, _))    = (map fst b :)
+          go _          (Bucket (b, _))    = (map (second lastSeenTimestamp) b :)
 
 -- | Turn the NodeTree into a list of nodes
-toList :: NodeTree i -> [Node i]
+toList :: NodeTree i -> [(Node i, Timestamp)]
 toList = concat . toView
 
 -- | Fold over the buckets
