@@ -129,7 +129,7 @@ dumpPeers (KI _ (KS sTree _ _) _ _) = do
     currentTime <- floor <$> getPOSIXTime
     atomically $ do
         tree <- readTVar sTree
-        return . map (second (subtract currentTime)) . T.toList $ tree
+        return . map (second (currentTime -)) . T.toList $ tree
 
 -- | Insert a value into the store
 insertValue :: (Ord i) => i -> a -> KademliaInstance i a -> IO ()
@@ -177,7 +177,7 @@ banNode (KI _ (KS sTree banned _) _ cfg) nid ban = atomically $ do
 viewBuckets :: KademliaInstance i a -> IO [[(Node i, Timestamp)]]
 viewBuckets (KI _ (KS sTree _ _) _ _) = do
     currentTime <- floor <$> getPOSIXTime
-    map (map $ second (subtract currentTime)) <$> T.toView <$> readTVarIO sTree
+    map (map $ second (currentTime -)) <$> T.toView <$> readTVarIO sTree
 
 -- | Start the background process for a KademliaInstance
 start :: (Show i, Serialize i, Ord i, Serialize a, Eq a) =>
