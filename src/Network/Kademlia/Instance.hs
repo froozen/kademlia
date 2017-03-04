@@ -7,6 +7,8 @@ as all the things that need to happen in the background to get a working
 Kademlia instance.
 -}
 
+{-# LANGUAGE ViewPatterns #-}
+
 module Network.Kademlia.Instance
     ( KademliaInstance (..)
     , KademliaState    (..)
@@ -26,6 +28,7 @@ module Network.Kademlia.Instance
     , viewBuckets
     ) where
 
+import           Control.Arrow               (second)
 import           Control.Concurrent          (ThreadId, forkIO, killThread, myThreadId)
 import           Control.Concurrent.Chan     (Chan, readChan)
 import           Control.Concurrent.STM      (TVar, atomically, modifyTVar, newTVar,
@@ -53,7 +56,7 @@ import           Network.Kademlia.ReplyQueue (Reply (..), ReplyQueue (timeoutCha
                                               defaultChan, dispatch)
 import qualified Network.Kademlia.Tree       as T
 import           Network.Kademlia.Types      (Command (..), Node (..), Peer (..),
-                                              Serialize (..), Signal (..),
+                                              Serialize (..), Signal (..), Timestamp,
                                               sortByDistanceTo)
 import           Network.Kademlia.Utils      (threadDelay)
 
@@ -122,9 +125,11 @@ lookupNode (KI _ (KS sTree _ _) _ cfg) nid = atomically $ do
 
 -- | Return all the Nodes an Instance has encountered so far
 dumpPeers :: KademliaInstance i a -> IO [(Node i, Timestamp)]
-dumpPeers (KI _ (KS sTree _ _) _ _) = atomically $ do
-    tree <- readTVar sTree
-    return . T.toList $ tree
+dumpPeers (KI _ (KS sTree _ _) _ _) = do
+    currentTime <- floor <$> getPOSIXTime
+    atomically $ do
+        tree <- readTVar sTree
+        return . map (second (subtract currentTime)) . T.toList $ tree
 
 -- | Insert a value into the store
 insertValue :: (Ord i) => i -> a -> KademliaInstance i a -> IO ()
@@ -171,8 +176,8 @@ banNode (KI _ (KS sTree banned _) _ cfg) nid ban = atomically $ do
 -- | Shows stored buckets, ordered by distance to this node
 viewBuckets :: KademliaInstance i a -> IO [[(Node i, Timestamp)]]
 viewBuckets (KI _ (KS sTree _ _) _ _) = do
-    currentTime <- getPOSIXTime
-    T.toView <$> readTVarIO sTree
+    currentTime <- floor <$> getPOSIXTime
+    map (map $ second (subtract currentTime)) <$> T.toView <$> readTVarIO sTree
 
 -- | Start the background process for a KademliaInstance
 start :: (Show i, Serialize i, Ord i, Serialize a, Eq a) =>
@@ -296,7 +301,7 @@ pingProcess (KI h (KS sTree _ _) _ cfg) chan = forever . (`catch` logError' h) $
     threadDelay (pingTime cfg)
 
     tree <- atomically . readTVar $ sTree
-    forM_ (T.toList tree) $ \node -> do
+    forM_ (T.toList tree) $ \(fst -> node) -> do
         -- Send PING and expect a PONG
         send h (peer node) PING
         expect h (RR [R_PONG] (nodeId node)) $ chan

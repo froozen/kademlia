@@ -121,7 +121,7 @@ executeCommand (Dump name) = do
     edges <- lift . fmap concat
                   . mapM (\l -> takeRandom bctEdges l)
                   . filter (\l -> ourNode `notElem` l && not (null l))
-                  $ buckets
+                  $ map (map fst) buckets
     lift $ appendFile ("log/" ++ name ++ show idx ++ ".log") $
         (listToStr $ concat buckets) ++ (unlines $ map (("edge " ++) . show) edges)
 

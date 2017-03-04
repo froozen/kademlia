@@ -41,7 +41,7 @@ data NodeTree i = NodeTree ByteStruct (NodeTreeElem i)
     deriving (Generic)
 
 data PingInfo = PingInfo {
-      pingTimes         :: Int
+      timeoutCount      :: Int
     , lastSeenTimestamp :: Timestamp
     } deriving (Generic, Eq)
 
@@ -149,7 +149,7 @@ handleTimeout tree nid = do
     let f _ _ (nodes, cache) = return $ case L.find (idMatches nid . fst) nodes of
             -- Delete a node that exceeded the limit. Don't contact it again
             --   as it is now considered dead
-            Just x@(_, PingInfo bs _) | bs == pingLimit -> (Bucket (L.delete x $ nodes, cache), False)
+            Just x@(_, PingInfo tc _) | tc == pingLimit -> (Bucket (L.delete x $ nodes, cache), False)
             -- Increment the timeoutCount
             Just x@(n, PingInfo timeoutCount timestamp) ->
                  (Bucket ((n, PingInfo (timeoutCount + 1) timestamp) : L.delete x nodes, cache), True)
@@ -158,13 +158,12 @@ handleTimeout tree nid = do
     bothAt tree nid f
 
 -- | Refresh the node corresponding to a supplied Id by placing it at the first
---   index of it's KBucket and reseting its timeoutCount, then return a Bucket
+--   index of it's KBucket and reseting its timeoutCount and timestamp, then return a Bucket
 --   NodeTreeElem
-refresh :: Eq i => Node i -> ([(Node i, PingInfo)], [Node i]) -> NodeTreeElem i
-refresh node (nodes, cache) =
+refresh :: Eq i => Node i -> Timestamp -> ([(Node i, PingInfo)], [Node i]) -> NodeTreeElem i
+refresh node timestamp (nodes, cache) =
          Bucket (case L.find (idMatches (nodeId node) . fst) nodes of
-                   -- TODO(voit): Set correct timestamp
-            Just x@(n, _) -> (n, PingInfo 0 0) : L.delete x nodes
+            Just x@(n, _) -> (n, PingInfo 0 timestamp) : L.delete x nodes
             _             -> nodes
             , cache)
 
@@ -188,10 +187,9 @@ insert tree node timestamp = do
 
         doInsert _ _ b@(nodes, cache)
           -- Refresh an already existing node
-          | node `elem` map fst nodes = return $ refresh node b
+          | node `elem` map fst nodes = return $ refresh node timestamp b
           -- Simply insert the node, if the bucket isn't full
-          -- TODO(voit): Add timestamp
-          | length nodes < k = return $ Bucket ((node, PingInfo 0 0):nodes, cache)
+          | length nodes < k = return $ Bucket ((node, PingInfo 0 timestamp):nodes, cache)
           -- Move the node to the first spot, if it's already cached
           | node `elem` cache = return $ Bucket (nodes, node : L.delete node cache)
           -- Cache the node and drop older ones, if necessary
