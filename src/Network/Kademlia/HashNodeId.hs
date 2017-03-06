@@ -4,6 +4,7 @@ module Network.Kademlia.HashNodeId
        , genNonce
        , hashIdLength
        , hashAddress
+       , nonceLen
        , verifyAddress
        ) where
 

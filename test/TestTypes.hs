@@ -8,28 +8,51 @@ Description : Types and Generators needed for general testing
 -}
 
 module TestTypes
-       ( IdType    (..)
+       ( BadHashId (..)
+       , IdType    (..)
        , NodeBunch (..)
        , IdBunch   (..)
        ) where
 
 
-import           Control.Arrow             (first)
-import           Control.Monad             (liftM, liftM2)
-import           Data.Binary               (Binary)
-import qualified Data.ByteString           as B
-import qualified Data.ByteString.Char8     as C
-import           Data.Function             (on)
-import           Data.List                 (nubBy)
-import           Data.Word                 (Word16)
-import           Network.Socket            (PortNumber)
+import           Control.Arrow               (first)
+import           Control.Monad               (liftM, liftM2)
+import           Data.Binary                 (Binary)
+import qualified Data.ByteString             as B
+import qualified Data.ByteString.Char8       as C
+import           Data.Function               (on)
+import           Data.List                   (nubBy)
+import           Data.Word                   (Word16)
+import           Network.Socket              (PortNumber)
 
-import           Test.QuickCheck           (Arbitrary (..), Gen, oneof, suchThat,
-                                            vectorOf)
+import           Test.QuickCheck             (Arbitrary (..), Gen, oneof, suchThat,
+                                              vector, vectorOf)
+import           Test.QuickCheck.Instances   ()
 
-import           Network.Kademlia.Instance (BanState (..))
-import           Network.Kademlia.Types    (Command (..), Node (..), Peer (..),
-                                            Serialize (..), Signal (..))
+import           Network.Kademlia.HashNodeId (HashId (..), Nonce (..), hashAddress,
+                                              hashIdLength, nonceLen)
+import           Network.Kademlia.Instance   (BanState (..))
+import           Network.Kademlia.Types      (Command (..), Node (..), Peer (..),
+                                              Serialize (..), Signal (..))
+
+-- | The generated 'Nonce' has 'nonceLen' bytes
+instance Arbitrary Nonce where
+    arbitrary = Nonce . B.pack <$> vector nonceLen
+
+-- | Generates a valid 'HashId' w.r.t. 'verifyAddress', meaning it is successfully
+-- serialized/deserialized
+instance Arbitrary HashId where
+    arbitrary = hashAddress <$> arbitrary
+
+newtype BadHashId = BadHashId
+    { getBadId :: HashId
+    } deriving (Show, Eq)
+
+-- | Generates an ivalid 'HashId' w.r.t. 'verifyAddress', meaning it is unsuccessfully
+-- serialized/deserialized
+instance Arbitrary BadHashId where
+    arbitrary =
+      BadHashId . HashId . B.pack <$> vector hashIdLength
 
 newtype IdType = IT
     { getBS :: B.ByteString
