@@ -33,16 +33,17 @@ import           GHC.Generics            (Generic)
 import           System.Random           (StdGen)
 import           System.Random.Shuffle   (shuffleM)
 
-import           Network.Kademlia.Config (WithConfig, getConfig, k, cacheSize, pingLimit)
-import           Network.Kademlia.Types  (ByteStruct, Timestamp, Node (..), Serialize (..),
-                                          fromByteStruct, sortByDistanceTo, toByteStruct)
+import           Network.Kademlia.Config (KademliaConfig (..), WithConfig, cacheSize,
+                                          getConfig, k)
+import           Network.Kademlia.Types  (ByteStruct, Node (..), Serialize (..),
+                                          Timestamp, fromByteStruct, sortByDistanceTo,
+                                          toByteStruct)
 
 data NodeTree i = NodeTree ByteStruct (NodeTreeElem i)
     deriving (Generic)
 
 data PingInfo = PingInfo {
-      timeoutCount      :: Int
-    , lastSeenTimestamp :: Timestamp
+      lastSeenTimestamp :: Timestamp
     } deriving (Generic, Eq)
 
 data NodeTreeElem i = Split (NodeTreeElem i) (NodeTreeElem i)
@@ -143,16 +144,19 @@ delete tree nid = modifyAt tree nid f
 -- | Handle a timed out node by incrementing its timeoutCount and deleting it
 --  if the count exceeds the limit. Also, return wether it's reasonable to ping
 --  the node again.
-handleTimeout :: (Serialize i, Eq i) => NodeTree i -> i -> WithConfig (NodeTree i, Bool)
-handleTimeout tree nid = do
-    pingLimit <- pingLimit <$> getConfig
+handleTimeout :: (Serialize i, Eq i) => Timestamp -> NodeTree i -> i -> WithConfig (NodeTree i, Bool)
+handleTimeout currentTime tree nid = do
+    KademliaConfig{..} <- getConfig
+    let acceptDiff = (fromIntegral pingLimit) * (fromIntegral pingTime)
     let f _ _ (nodes, cache) = return $ case L.find (idMatches nid . fst) nodes of
             -- Delete a node that exceeded the limit. Don't contact it again
             --   as it is now considered dead
-            Just x@(_, PingInfo tc _) | tc == pingLimit -> (Bucket (L.delete x $ nodes, cache), False)
+            Just x@(_, PingInfo lastSeen)
+                | currentTime - lastSeen > acceptDiff ->
+                    (Bucket (L.delete x $ nodes, cache), False)
             -- Increment the timeoutCount
-            Just x@(n, PingInfo timeoutCount timestamp) ->
-                 (Bucket ((n, PingInfo (timeoutCount + 1) timestamp) : L.delete x nodes, cache), True)
+            Just x@(n, PingInfo lastSeen) ->
+                 (Bucket ((n, PingInfo lastSeen) : L.delete x nodes, cache), True)
             -- Don't contact an unknown node a second time
             Nothing -> (Bucket (nodes, cache), False)
     bothAt tree nid f
@@ -161,15 +165,15 @@ handleTimeout tree nid = do
 --   index of it's KBucket and reseting its timeoutCount and timestamp, then return a Bucket
 --   NodeTreeElem
 refresh :: Eq i => Node i -> Timestamp -> ([(Node i, PingInfo)], [Node i]) -> NodeTreeElem i
-refresh node timestamp (nodes, cache) =
+refresh node currentTimestamp (nodes, cache) =
          Bucket (case L.find (idMatches (nodeId node) . fst) nodes of
-            Just x@(n, _) -> (n, PingInfo 0 timestamp) : L.delete x nodes
+            Just x@(n, _) -> (n, PingInfo currentTimestamp) : L.delete x nodes
             _             -> nodes
             , cache)
 
 -- | Insert a node into a NodeTree
 insert :: (Serialize i, Eq i) => NodeTree i -> Node i -> Timestamp -> WithConfig (NodeTree i)
-insert tree node timestamp = do
+insert tree node currentTime = do
     k <- k <$> getConfig
     cacheSize <- cacheSize <$> getConfig
     let needsSplit depth valid (nodes, _) = do
@@ -187,9 +191,9 @@ insert tree node timestamp = do
 
         doInsert _ _ b@(nodes, cache)
           -- Refresh an already existing node
-          | node `elem` map fst nodes = return $ refresh node timestamp b
+          | node `elem` map fst nodes = return $ refresh node currentTime b
           -- Simply insert the node, if the bucket isn't full
-          | length nodes < k = return $ Bucket ((node, PingInfo 0 timestamp):nodes, cache)
+          | length nodes < k = return $ Bucket ((node, PingInfo currentTime):nodes, cache)
           -- Move the node to the first spot, if it's already cached
           | node `elem` cache = return $ Bucket (nodes, node : L.delete node cache)
           -- Cache the node and drop older ones, if necessary
@@ -198,7 +202,7 @@ insert tree node timestamp = do
     if r
     -- Split the tree before inserting, when it makes sense
     then let splitTree = split tree . nodeId $ node
-         in (\t -> insert t node timestamp) =<< splitTree
+         in (\t -> insert t node currentTime) =<< splitTree
     -- Insert the node
     else modifyAt tree (nodeId node) doInsert
 

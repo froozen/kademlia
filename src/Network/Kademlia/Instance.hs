@@ -111,11 +111,13 @@ insertNode inst@(KI _ (KS sTree _ _) _ cfg) node = do
 
 -- | Signal a Node's timeout and retur wether it should be repinged
 timeoutNode :: (Serialize i, Ord i) => KademliaInstance i a -> i -> IO Bool
-timeoutNode (KI _ (KS sTree _ _) _ cfg) nid = atomically $ do
-    tree <- readTVar sTree
-    let (newTree, pingAgain) = T.handleTimeout tree nid `usingConfig` cfg
-    writeTVar sTree newTree
-    return pingAgain
+timeoutNode (KI _ (KS sTree _ _) _ cfg) nid = do
+    currentTime <- floor <$> getPOSIXTime
+    atomically $ do
+        tree <- readTVar sTree
+        let (newTree, pingAgain) = T.handleTimeout currentTime tree nid `usingConfig` cfg
+        writeTVar sTree newTree
+        return pingAgain
 
 -- | Lookup a Node in the NodeTree
 lookupNode :: (Serialize i, Ord i) => KademliaInstance i a -> i -> IO (Maybe (Node i))
