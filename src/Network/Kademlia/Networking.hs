@@ -9,6 +9,7 @@ Network.Kademlia.Networking implements all the UDP network functionality.
 
 module Network.Kademlia.Networking
        ( KademliaHandle
+       , kSock
        , openOn
        , openOnL
        , startRecvProcess
