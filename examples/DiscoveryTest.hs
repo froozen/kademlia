@@ -154,7 +154,7 @@ main = do
 
     putStrLn $ "peerIndex " ++ show peerIndex
     putStrLn $ "peerPort " ++ show peerPort
-    kInstance <- K.createL port (KademliaID key) config logInfo logError
+    kInstance <- K.createL "127.0.0.1" port (KademliaID key) config logInfo logError
     when (peerPort /= 0) $ do
         putStrLn "Connecting to peer"
         r <- connectToPeer kInstance peerPort peerKey

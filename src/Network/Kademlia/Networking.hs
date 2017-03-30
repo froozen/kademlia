@@ -9,6 +9,7 @@ Network.Kademlia.Networking implements all the UDP network functionality.
 
 module Network.Kademlia.Networking
        ( KademliaHandle
+       , kSock
        , openOn
        , openOnL
        , startRecvProcess
@@ -57,21 +58,22 @@ logError' h = logError h . show
 
 openOn
     :: (Show i, Serialize i, Serialize a)
-    => String -> i -> ReplyQueue i a -> IO (KademliaHandle i a)
-openOn port id' rq = openOnL port id' lim rq (const $ pure ()) (const $ pure ())
+    => String -> String -> i -> ReplyQueue i a -> IO (KademliaHandle i a)
+openOn host port id' rq = openOnL host port id' lim rq (const $ pure ()) (const $ pure ())
   where
     lim = msgSizeLimit defaultConfig
 
 -- | Open a Kademlia connection on specified port and return a corresponding
 --   KademliaHandle
-openOnL :: (Show i, Serialize i, Serialize a) => String -> i -> Int
-       -> ReplyQueue i a -> (String -> IO ()) -> (String -> IO ())
+openOnL :: (Show i, Serialize i, Serialize a) => String -> String
+       -> i -> Int -> ReplyQueue i a -> (String -> IO ()) -> (String -> IO ())
        -> IO (KademliaHandle i a)
-openOnL port id' lim rq logInfo logError = withSocketsDo $ do
+openOnL host port id' lim rq logInfo logError = withSocketsDo $ do
     -- Get addr to bind to
     serveraddrs <- getAddrInfo
                  (Just (defaultHints {addrFlags = [AI_PASSIVE]}))
-                 Nothing (Just port)
+                 (Just host)
+                 (Just port)
 
     -- TODO: support IPV6 by binding to two sockets
     let serveraddr = head $ filter (\a -> addrFamily a == AF_INET) serveraddrs

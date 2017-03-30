@@ -151,6 +151,7 @@ joinNetwork inst node = ownId >>= runLookup go inst
                 then return NodeBanned
                 else do
                     -- Poll the supplied node
+                    --liftIO $ putStrLn $ "join: sending to " ++ show (peer node)
                     sendS node
                     -- Run a normal lookup from thereon out
                     waitForReply nodeDown checkSignal
