@@ -4,7 +4,10 @@ module Network.Kademlia.HashNodeId
        , genNonce
        , hashIdLength
        , hashAddress
+       , nonceLen
        , verifyAddress
+       , meaningPartLength
+       , hashPartLength
        ) where
 
 import           Crypto.Hash            (Digest, SHA256 (..), SHA512, hash)
@@ -15,6 +18,14 @@ import           Data.ByteArray         (ByteArray, ByteArrayAccess)
 import qualified Data.ByteString        as B
 
 import           Network.Kademlia.Types (Serialize (..))
+
+-- TODO document. What is this?
+meaningPartLength :: Int
+meaningPartLength = 14
+
+-- TODO document. What is this?
+hashPartLength :: Int
+hashPartLength = 18
 
 newtype Nonce = Nonce B.ByteString
 

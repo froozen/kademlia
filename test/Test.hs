@@ -12,6 +12,7 @@ import           Test.Tasty            (TestTree, defaultMain, testGroup)
 import           Test.Tasty.HUnit      as HU
 import           Test.Tasty.QuickCheck as QC
 
+import qualified HashNodeId            as Hash
 import           Implementation        (idClashCheck, joinBannedCheck, joinCheck,
                                         joinFullCheck, lookupNodesCheck, nodeDownCheck,
                                         storeAndLookupCheck)
@@ -34,13 +35,30 @@ tests = testGroup "Tests" [quickCheckTests, hUnitTests]
 
 quickCheckTests :: TestTree
 quickCheckTests = testGroup "QuickCheck" [
-      typeChecks
+      hashNodeChecks
+    , typeChecks
     , protocolChecks
     , networkingChecks
     , treeChecks
     , instanceChecks
     , replyQueueChecks
     , implementationChecks
+    ]
+
+hashNodeChecks :: TestTree
+hashNodeChecks = testGroup "Network.Kademlia.HashNodeId" [
+      QC.testProperty "HashId to ByteString conversion works"
+         Hash.toFromHashId
+    , QC.testProperty "ByteString to HashId conversion works"
+         Hash.fromToHashId
+    , QC.testProperty "BadHashId to ByteString conversion does not work"
+         Hash.toFromHashId
+    , QC.testProperty "ByteString to BadHashId conversion does not work"
+         Hash.fromToHashId
+    , QC.testProperty "Successfully verifies a valid 'HashId'"
+         Hash.verifyHashId
+    , QC.testProperty "Unsuccessfully verifies an invalid 'HashId'"
+         Hash.notVerifyBadHashId
     ]
 
 typeChecks :: TestTree

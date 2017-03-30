@@ -69,8 +69,8 @@ handlesPingCheck = do
 
     rq <- emptyReplyQueue
 
-    khA <- openOn "1122" idA rq :: IO (KademliaHandle IdType String)
-    kiB <- create 1123 idB   :: IO (KademliaInstance IdType String)
+    khA <- openOn "127.0.0.1" "1122" idA rq :: IO (KademliaHandle IdType String)
+    kiB <- create "127.0.0.1" 1123 idB   :: IO (KademliaInstance IdType String)
 
     startRecvProcess khA
 
@@ -95,8 +95,8 @@ storeAndFindValueCheck key value = monadicIO $ do
     receivedCmd <- run $ do
         rq <- emptyReplyQueue
 
-        khA <- openOn "1122" idA rq
-        kiB <- create 1123 idB :: IO (KademliaInstance IdType String)
+        khA <- openOn "127.0.0.1" "1122" idA rq
+        kiB <- create "127.0.0.1" 1123 idB :: IO (KademliaInstance IdType String)
 
         startRecvProcess khA
 
@@ -133,8 +133,8 @@ trackingKnownPeersCheck = monadicIO $ do
     (node, kiB) <- run $ do
         rq <- emptyReplyQueue :: IO (ReplyQueue IdType String)
 
-        khA <- openOn "1122" idA rq
-        kiB <- create 1123 idB :: IO (KademliaInstance IdType String)
+        khA <- openOn "127.0.0.1" "1122" idA rq
+        kiB <- create "127.0.0.1" 1123 idB :: IO (KademliaInstance IdType String)
 
         startRecvProcess khA
 
@@ -158,7 +158,7 @@ trackingKnownPeersCheck = monadicIO $ do
 -- | Make sure `isNodeBanned` works correctly
 isNodeBannedCheck :: Assertion
 isNodeBannedCheck = do
-    inst <- create 1123 idA :: IO (KademliaInstance IdType String)
+    inst <- create "127.0.0.1" 1123 idA :: IO (KademliaInstance IdType String)
     let check msg ans = do
             ban <- isNodeBanned inst idB
             assertEqual msg ban ans
@@ -188,8 +188,8 @@ banNodeCheck = do
 
     rq <- emptyReplyQueue
 
-    khA <- openOn "1122" idA rq :: IO (KademliaHandle IdType String)
-    kiB <- create 1123 idB   :: IO (KademliaInstance IdType String)
+    khA <- openOn "127.0.0.1" "1122" idA rq :: IO (KademliaHandle IdType String)
+    kiB <- create "127.0.0.1" 1123 idB   :: IO (KademliaInstance IdType String)
 
     banNode kiB idA $ BanForever
     startRecvProcess khA
