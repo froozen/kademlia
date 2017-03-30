@@ -113,6 +113,7 @@ anything to handle this.
 
 module Network.Kademlia
        ( KademliaInstance
+       , node
        , KademliaConfig(..)
        , KademliaSnapshot
        , create
@@ -151,25 +152,27 @@ import           Prelude                         hiding (lookup)
 -- | Create a new KademliaInstance corresponding to a given Id on a given port
 create
     :: (Show i, Serialize i, Ord i, Serialize a, Eq a)
-    => Int
+    => String -- ^ Bind host
+    -> Int    -- ^ Bind port
     -> i
     -> IO (KademliaInstance i a)
-create port id' =
-    createL port id' defaultConfig (const $ pure ()) (const $ pure ())
+create host port id' =
+    createL host port id' defaultConfig (const $ pure ()) (const $ pure ())
 
 -- | Same as create, but with logging
 createL
     :: (Show i, Serialize i, Ord i, Serialize a, Eq a)
-    => Int
+    => String -- ^ Bind host
+    -> Int    -- ^ Bind port
     -> i
     -> KademliaConfig
     -> (String -> IO ())
     -> (String -> IO ())
     -> IO (KademliaInstance i a)
-createL port id' cfg logInfo logError = do
+createL host port id' cfg logInfo logError = do
     rq <- emptyReplyQueueL logInfo logError
     let lim = msgSizeLimit cfg
-    h <- openOnL (show port) id' lim rq logInfo logError
+    h <- openOnL host (show port) id' lim rq logInfo logError
     inst <- newInstance id' cfg h
     start inst rq
     return inst
@@ -177,17 +180,18 @@ createL port id' cfg logInfo logError = do
 -- | Create instance from snapshot with logging
 createLFromSnapshot
     :: (Show i, Serialize i, Ord i, Serialize a, Eq a)
-    => Int
+    => String -- ^ Bind host
+    -> Int    -- ^ Bind port
     -> KademliaConfig
     -> KademliaSnapshot i
     -> (String -> IO ())
     -> (String -> IO ())
     -> IO (KademliaInstance i a)
-createLFromSnapshot port cfg snapshot logInfo logError = do
+createLFromSnapshot host port cfg snapshot logInfo logError = do
     rq <- emptyReplyQueueL logInfo logError
     let lim = msgSizeLimit cfg
     let id' = T.extractId (spTree snapshot) `usingConfig` cfg
-    h <- openOnL (show port) id' lim rq logInfo logError
+    h <- openOnL host (show port) id' lim rq logInfo logError
     inst <- restoreInstance cfg h snapshot
     start inst rq
     return inst
