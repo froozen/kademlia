@@ -35,7 +35,7 @@ import           Control.Concurrent.STM      (TVar, atomically, modifyTVar, newT
                                               readTVar, readTVarIO, writeTVar)
 import           Control.Exception           (catch)
 import           Control.Monad               (forM_, forever, forever, unless, void, when)
-import           Control.Monad.Extra         (unlessM)
+import           Control.Monad.Extra         (unlessM, whenM)
 import           Control.Monad.IO.Class      (liftIO)
 import           Control.Monad.Trans         ()
 import           Control.Monad.Trans.Reader  ()
@@ -46,19 +46,20 @@ import qualified Data.Map                    as M hiding (Map)
 import           Data.Maybe                  (fromJust, isJust)
 import           Data.Time.Clock.POSIX       (getPOSIXTime)
 import           GHC.Generics                (Generic)
-import           System.Random               (newStdGen)
-import           Network.Socket              (SockAddr(..), inet_ntoa, getSocketName)
-import           Network.Kademlia.Config     (KademliaConfig (..), usingConfig, defaultConfig, k)
+import           Network.Kademlia.Config     (KademliaConfig (..), defaultConfig, k,
+                                              usingConfig)
 import           Network.Kademlia.Networking (KademliaHandle (..), expect, logError',
                                               send, startRecvProcess)
 import           Network.Kademlia.ReplyQueue (Reply (..), ReplyQueue (timeoutChan),
                                               ReplyRegistration (..), ReplyType (..),
-                                              defaultChan, dispatch)
+                                              defaultChan, dispatch, expectedReply)
 import qualified Network.Kademlia.Tree       as T
 import           Network.Kademlia.Types      (Command (..), Node (..), Peer (..),
                                               Serialize (..), Signal (..), Timestamp,
                                               sortByDistanceTo)
 import           Network.Kademlia.Utils      (threadDelay)
+import           Network.Socket              (SockAddr (..), getSocketName, inet_ntoa)
+import           System.Random               (newStdGen)
 
 -- | The handle of a running Kademlia Node
 data KademliaInstance i a = KI {
@@ -187,20 +188,41 @@ viewBuckets (KI _ _ (KS sTree _ _) _ _) = do
 
 -- | Start the background process for a KademliaInstance
 start :: (Show i, Serialize i, Ord i, Serialize a, Eq a) =>
-         KademliaInstance i a -> ReplyQueue i a -> IO ()
-start inst rq = do
-        startRecvProcess . handle $ inst
-        receivingId <- forkIO $ receivingProcess inst rq
-        pingId <- forkIO $ pingProcess inst $ defaultChan rq
-        spreadId <- forkIO $ spreadValueProcess inst
-        void . forkIO $ backgroundProcess inst (defaultChan rq) [pingId, spreadId, receivingId]
+         KademliaInstance i a -> IO ()
+start inst = do
+    let rq = replyQueue $ handle inst
+    startRecvProcess . handle $ inst
+    receivingId <- forkIO $ receivingProcess inst
+    pingId <- forkIO $ pingProcess inst $ defaultChan rq
+    spreadId <- forkIO $ spreadValueProcess inst
+    void . forkIO $ backgroundProcess inst (defaultChan rq) [pingId, spreadId, receivingId]
 
 -- | The central process all Replys go trough
-receivingProcess :: (Show i, Serialize i, Ord i) =>
-       KademliaInstance i a -> ReplyQueue i a -> IO ()
-receivingProcess inst@(KI _ h _ _ cfg) rq = forever . (`catch` logError' h) $ do
-    reply <- readChan $ timeoutChan rq
+receivingProcess
+    :: (Show i, Serialize i, Ord i)
+    => KademliaInstance i a
+    -> IO ()
+receivingProcess inst@(KI _ h _ _ _) = forever . (`catch` logError' h) $ do
+    let rq = replyQueue h
+    reply <- readChan $ timeoutChan $ replyQueue h
+    let notResponse = not $ isResponse reply
+    whenM ((notResponse ||) <$> expectedReply reply rq) $
+        receivingProcessDo inst reply rq
+  where
+    isResponse :: Reply i a -> Bool
+    isResponse (Answer (Signal _ PONG))                 = True
+    isResponse (Answer (Signal _ (RETURN_VALUE _ _)))   = True
+    isResponse (Answer (Signal _ (RETURN_NODES _ _ _))) = True
+    isResponse _                                        = False
 
+
+receivingProcessDo
+    :: (Show i, Serialize i, Ord i)
+    => KademliaInstance i a
+    -> Reply i a
+    -> ReplyQueue i a
+    -> IO ()
+receivingProcessDo inst@(KI _ h _ _ cfg) reply rq = do
     logInfo h $ "Received reply: " ++ show reply
 
     case reply of
@@ -216,11 +238,12 @@ receivingProcess inst@(KI _ h _ _ cfg) rq = forever . (`catch` logError' h) $ do
                 when pingAgain $ do
                     result <- lookupNode inst origin
                     case result of
-                        Nothing -> return ()
+                        Nothing   -> return ()
                         Just node -> sendPing h node (defaultChan rq)
+            dispatch reply rq -- remove node from ReplyQueue in the last time
 
         -- Store values in newly encountered nodes that you are the closest to
-        Answer (Signal node cmd) -> do
+        Answer (Signal node _) -> do
             let originId = nodeId node
 
             -- If peer is banned, ignore
@@ -242,25 +265,12 @@ receivingProcess inst@(KI _ h _ _ cfg) rq = forever . (`catch` logError' h) $ do
                         let p = peer node
                         -- Store all stored values in the new node
                         forM_ storedValues (send h p . uncurry STORE)
+                dispatch reply rq
+        Closed -> dispatch reply rq -- if Closed message
 
-                case cmd of
-                    -- Ping unknown Nodes that were returned by RETURN_NODES.
-                    -- Pinging them first is neccessary to prevent disconnected
-                    -- nodes from spreading through the networks NodeTrees.
-                    (RETURN_NODES _ _ nodes) -> forM_ nodes $ \retNode -> do
-                        result <- lookupNode inst . nodeId $ retNode
-                        case result of
-                            Nothing -> sendPing (handle inst) retNode (defaultChan rq) 
-                            _       -> return ()
-                    _ -> return ()
-
-        _ -> return ()
-
-    dispatch reply rq
     where
         retrieve f = atomically . readTVar . f . state $ inst
         retrieveMaybe f = maybe (pure mempty) (atomically . readTVar) . f . state $ inst
-
 
 -- | The actual process running in the background
 backgroundProcess :: (Show i, Serialize i, Ord i, Serialize a, Eq a) =>
@@ -367,6 +377,14 @@ handleCommand (FIND_VALUE key) peer inst = do
     case result of
         Just value -> liftIO $ send (handle inst) peer $ RETURN_VALUE key value
         Nothing    -> returnNodes peer key inst
+-- Ping unknown Nodes that were returned by RETURN_NODES.
+-- Pinging them first is neccessary to prevent disconnected
+-- nodes from spreading through the networks NodeTrees.
+handleCommand (RETURN_NODES _ _ nodes) _ inst@KI{..} = forM_ nodes $ \retNode -> do
+    result <- lookupNode inst . nodeId $ retNode
+    case result of
+        Nothing -> sendPing handle retNode (defaultChan $ replyQueue $ handle)
+        _       -> return ()
 handleCommand _ _ _ = return ()
 
 -- | Return a KBucket with the closest Nodes to a supplied Id
