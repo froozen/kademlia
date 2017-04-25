@@ -1,3 +1,4 @@
+{-# LANGUAGE ViewPatterns #-}
 {-|
 Module      : Network.Kademlia.ReplyQueue
 Description : A queue allowing to register handlers for expected replies
@@ -17,14 +18,17 @@ module Network.Kademlia.ReplyQueue
     , emptyReplyQueueL
     , register
     , dispatch
+    , expectedReply
     , flush
     ) where
 
 import           Control.Concurrent     (Chan, ThreadId, forkIO, killThread, newChan,
                                          writeChan)
-import           Control.Concurrent.STM (TVar, atomically, newTVar, readTVar, writeTVar)
+import           Control.Concurrent.STM (TVar, atomically, newTVar, readTVar, readTVarIO,
+                                         writeTVar)
 import           Control.Monad          (forM_)
 import           Data.List              (delete, find)
+import           Data.Maybe             (isJust)
 
 import           Network.Kademlia.Types (Command (..), Node (..), Signal (..))
 import           Network.Kademlia.Utils (threadDelay)
@@ -142,10 +146,17 @@ dispatch reply rq = do
 
         -- Send the reply over the default channel
         Nothing -> do
-          logInfo rq (" -- dispatch reply " ++ show reply ++ ": not in queue")
-          writeChan (defaultChan rq) reply
+            logInfo rq (" -- dispatch reply " ++ show reply ++ ": not in queue")
+            writeChan (defaultChan rq) reply
 
     where matches regA (regB, _, _) = matchRegistrations regA regB
+
+expectedReply :: (Show i, Eq i) => Reply i a -> ReplyQueue i a -> IO Bool
+expectedReply (toRegistration -> reply) rq
+    | Just repReg <- reply = isJust . find (matches repReg) <$> (readTVarIO $ queue rq)
+    | otherwise = pure False
+  where
+    matches regA (regB, _, _) = matchRegistrations regA regB
 
 -- | Send Closed signal to all handlers and empty ReplyQueue
 flush :: ReplyQueue i a -> IO ()

@@ -174,8 +174,7 @@ createL host port id' cfg logInfo logError = do
     let lim = msgSizeLimit cfg
     h <- openOnL host (show port) id' lim rq logInfo logError
     inst <- newInstance id' cfg h
-    start inst rq
-    return inst
+    inst <$ start inst
 
 -- | Create instance from snapshot with logging
 createLFromSnapshot
@@ -193,8 +192,7 @@ createLFromSnapshot host port cfg snapshot logInfo logError = do
     let id' = T.extractId (spTree snapshot) `usingConfig` cfg
     h <- openOnL host (show port) id' lim rq logInfo logError
     inst <- restoreInstance cfg h snapshot
-    start inst rq
-    return inst
+    inst <$ start inst
 
 -- | Stop a KademliaInstance by closing it
 close :: KademliaInstance i a -> IO ()
