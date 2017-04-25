@@ -13,6 +13,7 @@ module Network.Kademlia.Types
        , Peer      (..)
        , Serialize (..)
        , Signal    (..)
+       , Timestamp
 
        , distance
        , fromByteStruct
@@ -25,6 +26,7 @@ import           Data.Binary             (Binary (..))
 import           Data.Bits               (setBit, testBit, zeroBits)
 import qualified Data.ByteString         as B (ByteString, foldr, pack)
 import           Data.Function           (on)
+import           Data.Int                (Int64)
 import           Data.List               (sortBy)
 import           Data.Word               (Word8)
 import           GHC.Generics            (Generic)
@@ -135,3 +137,6 @@ instance Show i => Show (Command i a) where
   show (RETURN_NODES n i nodes) = "RETURN_NODES (one of " ++ show n ++ " messages) " ++ show i ++ " " ++ show nodes
   show (FIND_VALUE   i)       = "FIND_VALUE " ++ show i
   show (RETURN_VALUE i _)     = "RETURN_VALUE " ++ show i ++ " <data>"
+
+-- | Amount of seconds since Jan 1, 1970 UTC
+type Timestamp = Int64

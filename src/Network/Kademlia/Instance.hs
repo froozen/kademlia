@@ -7,6 +7,8 @@ as all the things that need to happen in the background to get a working
 Kademlia instance.
 -}
 
+{-# LANGUAGE ViewPatterns #-}
+
 module Network.Kademlia.Instance
     ( KademliaInstance (..)
     , KademliaState    (..)
@@ -26,6 +28,7 @@ module Network.Kademlia.Instance
     , viewBuckets
     ) where
 
+import           Control.Arrow               (second)
 import           Control.Concurrent          (ThreadId, forkIO, killThread, myThreadId)
 import           Control.Concurrent.Chan     (Chan, readChan)
 import           Control.Concurrent.STM      (TVar, atomically, modifyTVar, newTVar,
@@ -53,7 +56,7 @@ import           Network.Kademlia.ReplyQueue (Reply (..), ReplyQueue (timeoutCha
                                               defaultChan, dispatch)
 import qualified Network.Kademlia.Tree       as T
 import           Network.Kademlia.Types      (Command (..), Node (..), Peer (..),
-                                              Serialize (..), Signal (..),
+                                              Serialize (..), Signal (..), Timestamp,
                                               sortByDistanceTo)
 import           Network.Kademlia.Utils      (threadDelay)
 
@@ -105,17 +108,20 @@ newInstance nid cfg handle = do
 -- | Insert a Node into the NodeTree
 insertNode :: (Serialize i, Ord i) => KademliaInstance i a -> Node i -> IO ()
 insertNode inst@(KI _ _ (KS sTree _ _) _ cfg) node = do
+    currentTime <- floor <$> getPOSIXTime
     unlessM (isNodeBanned inst $ nodeId node) $ atomically $ do
         tree <- readTVar sTree
-        writeTVar sTree $ T.insert tree node `usingConfig` cfg
+        writeTVar sTree $ T.insert tree node currentTime `usingConfig` cfg
 
 -- | Signal a Node's timeout and retur wether it should be repinged
 timeoutNode :: (Serialize i, Ord i) => KademliaInstance i a -> i -> IO Bool
-timeoutNode (KI _ _ (KS sTree _ _) _ cfg) nid = atomically $ do
-    tree <- readTVar sTree
-    let (newTree, pingAgain) = T.handleTimeout tree nid `usingConfig` cfg
-    writeTVar sTree newTree
-    return pingAgain
+timeoutNode (KI _ _ (KS sTree _ _) _ cfg) nid = do
+    currentTime <- floor <$> getPOSIXTime
+    atomically $ do
+        tree <- readTVar sTree
+        let (newTree, pingAgain) = T.handleTimeout currentTime tree nid `usingConfig` cfg
+        writeTVar sTree newTree
+        return pingAgain
 
 -- | Lookup a Node in the NodeTree
 lookupNode :: (Serialize i, Ord i) => KademliaInstance i a -> i -> IO (Maybe (Node i))
@@ -124,10 +130,12 @@ lookupNode (KI _ _ (KS sTree _ _) _ cfg) nid = atomically $ do
     return $ T.lookup tree nid `usingConfig` cfg
 
 -- | Return all the Nodes an Instance has encountered so far
-dumpPeers :: KademliaInstance i a -> IO [Node i]
-dumpPeers (KI _ _ (KS sTree _ _) _ _) = atomically $ do
-    tree <- readTVar sTree
-    return . T.toList $ tree
+dumpPeers :: KademliaInstance i a -> IO [(Node i, Timestamp)]
+dumpPeers (KI _ _ (KS sTree _ _) _ _) = do
+    currentTime <- floor <$> getPOSIXTime
+    atomically $ do
+        tree <- readTVar sTree
+        return . map (second (currentTime -)) . T.toList $ tree
 
 -- | Insert a value into the store
 insertValue :: (Ord i) => i -> a -> KademliaInstance i a -> IO ()
@@ -172,8 +180,10 @@ banNode (KI _ _ (KS sTree banned _) _ cfg) nid ban = atomically $ do
     modifyTVar sTree $ \t -> T.delete t nid `usingConfig` cfg
 
 -- | Shows stored buckets, ordered by distance to this node
-viewBuckets :: KademliaInstance i a -> IO [[Node i]]
-viewBuckets (KI _ _ (KS sTree _ _) _ _) = T.toView <$> readTVarIO sTree
+viewBuckets :: KademliaInstance i a -> IO [[(Node i, Timestamp)]]
+viewBuckets (KI _ _ (KS sTree _ _) _ _) = do
+    currentTime <- floor <$> getPOSIXTime
+    map (map $ second (currentTime -)) <$> T.toView <$> readTVarIO sTree
 
 -- | Start the background process for a KademliaInstance
 start :: (Show i, Serialize i, Ord i, Serialize a, Eq a) =>
@@ -297,7 +307,7 @@ pingProcess (KI _ h (KS sTree _ _) _ cfg) chan = forever . (`catch` logError' h)
     threadDelay (pingTime cfg)
 
     tree <- atomically . readTVar $ sTree
-    forM_ (T.toList tree) $ \node -> do
+    forM_ (T.toList tree) $ \(fst -> node) -> do
         -- Send PING and expect a PONG
         send h (peer node) PING
         expect h (RR [R_PONG] (nodeId node)) $ chan

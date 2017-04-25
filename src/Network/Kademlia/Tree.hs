@@ -25,6 +25,7 @@ module Network.Kademlia.Tree
 
 import           Prelude                 hiding (lookup)
 
+import           Control.Arrow           (second)
 import           Control.Monad.Random    (evalRand)
 import           Data.Binary             (Binary)
 import qualified Data.List               as L (delete, find, genericTake)
@@ -32,18 +33,26 @@ import           GHC.Generics            (Generic)
 import           System.Random           (StdGen)
 import           System.Random.Shuffle   (shuffleM)
 
-import           Network.Kademlia.Config (WithConfig, getConfig, k, cacheSize, pingLimit)
+import           Network.Kademlia.Config (KademliaConfig (..), WithConfig, cacheSize,
+                                          getConfig, k)
 import           Network.Kademlia.Types  (ByteStruct, Node (..), Serialize (..),
-                                          fromByteStruct, sortByDistanceTo, toByteStruct)
+                                          Timestamp, fromByteStruct, sortByDistanceTo,
+                                          toByteStruct)
 
 data NodeTree i = NodeTree ByteStruct (NodeTreeElem i)
     deriving (Generic)
 
+data PingInfo = PingInfo {
+      lastSeenTimestamp :: Timestamp
+    } deriving (Generic, Eq)
+
 data NodeTreeElem i = Split (NodeTreeElem i) (NodeTreeElem i)
-                    | Bucket ([(Node i, Int)], [Node i])
+                    | Bucket ([(Node i, PingInfo)], [Node i])
     deriving (Generic)
 
-type NodeTreeFunction i a = Int -> Bool -> ([(Node i, Int)], [Node i]) -> WithConfig a
+type NodeTreeFunction i a = Int -> Bool -> ([(Node i, PingInfo)], [Node i]) -> WithConfig a
+
+instance Binary PingInfo
 
 instance Binary i => Binary (NodeTree i)
 
@@ -135,33 +144,36 @@ delete tree nid = modifyAt tree nid f
 -- | Handle a timed out node by incrementing its timeoutCount and deleting it
 --  if the count exceeds the limit. Also, return wether it's reasonable to ping
 --  the node again.
-handleTimeout :: (Serialize i, Eq i) => NodeTree i -> i -> WithConfig (NodeTree i, Bool)
-handleTimeout tree nid = do
-    pingLimit <- pingLimit <$> getConfig
+handleTimeout :: (Serialize i, Eq i) => Timestamp -> NodeTree i -> i -> WithConfig (NodeTree i, Bool)
+handleTimeout currentTime tree nid = do
+    KademliaConfig{..} <- getConfig
+    let acceptDiff = (fromIntegral pingLimit) * (fromIntegral pingTime)
     let f _ _ (nodes, cache) = return $ case L.find (idMatches nid . fst) nodes of
             -- Delete a node that exceeded the limit. Don't contact it again
             --   as it is now considered dead
-            Just x@(_, bs) | bs == pingLimit -> (Bucket (L.delete x $ nodes, cache), False)
+            Just x@(_, PingInfo lastSeen)
+                | currentTime - lastSeen > acceptDiff ->
+                    (Bucket (L.delete x $ nodes, cache), False)
             -- Increment the timeoutCount
-            Just x@(n, timeoutCount) ->
-                 (Bucket ((n, timeoutCount + 1) : L.delete x nodes, cache), True)
+            Just x@(n, PingInfo lastSeen) ->
+                 (Bucket ((n, PingInfo lastSeen) : L.delete x nodes, cache), True)
             -- Don't contact an unknown node a second time
             Nothing -> (Bucket (nodes, cache), False)
     bothAt tree nid f
 
 -- | Refresh the node corresponding to a supplied Id by placing it at the first
---   index of it's KBucket and reseting its timeoutCount, then return a Bucket
+--   index of it's KBucket and reseting its timeoutCount and timestamp, then return a Bucket
 --   NodeTreeElem
-refresh :: Eq i => Node i -> ([(Node i, Int)], [Node i]) -> NodeTreeElem i
-refresh node (nodes, cache) =
+refresh :: Eq i => Node i -> Timestamp -> ([(Node i, PingInfo)], [Node i]) -> NodeTreeElem i
+refresh node currentTimestamp (nodes, cache) =
          Bucket (case L.find (idMatches (nodeId node) . fst) nodes of
-            Just x@(n, _) -> (n, 0) : L.delete x nodes
+            Just x@(n, _) -> (n, PingInfo currentTimestamp) : L.delete x nodes
             _             -> nodes
             , cache)
 
 -- | Insert a node into a NodeTree
-insert :: (Serialize i, Eq i) => NodeTree i -> Node i -> WithConfig (NodeTree i)
-insert tree node = do
+insert :: (Serialize i, Eq i) => NodeTree i -> Node i -> Timestamp -> WithConfig (NodeTree i)
+insert tree node currentTime = do
     k <- k <$> getConfig
     cacheSize <- cacheSize <$> getConfig
     let needsSplit depth valid (nodes, _) = do
@@ -179,9 +191,9 @@ insert tree node = do
 
         doInsert _ _ b@(nodes, cache)
           -- Refresh an already existing node
-          | node `elem` map fst nodes = return $ refresh node b
+          | node `elem` map fst nodes = return $ refresh node currentTime b
           -- Simply insert the node, if the bucket isn't full
-          | length nodes < k = return $ Bucket ((node, 0):nodes, cache)
+          | length nodes < k = return $ Bucket ((node, PingInfo currentTime):nodes, cache)
           -- Move the node to the first spot, if it's already cached
           | node `elem` cache = return $ Bucket (nodes, node : L.delete node cache)
           -- Cache the node and drop older ones, if necessary
@@ -190,7 +202,7 @@ insert tree node = do
     if r
     -- Split the tree before inserting, when it makes sense
     then let splitTree = split tree . nodeId $ node
-         in flip insert node =<< splitTree
+         in (\t -> insert t node currentTime) =<< splitTree
     -- Insert the node
     else modifyAt tree (nodeId node) doInsert
 
@@ -226,7 +238,7 @@ pickupRandom
 pickupRandom _ 0 _ _ = []
 pickupRandom tree n ignoreList randGen =
     let treeList      = toList tree
-        notIgnored     = filter (`notElem` ignoreList) treeList
+        notIgnored    = filter (`notElem` ignoreList) $ map fst treeList
         shuffledNodes = evalRand (shuffleM notIgnored) randGen
     in L.genericTake n shuffledNodes
 
@@ -275,17 +287,17 @@ idMatches :: (Eq i) => i -> Node i -> Bool
 idMatches nid node = nid == nodeId node
 
 -- | Turn the NodeTree into a list of buckets, ordered by distance to origin node
-toView :: NodeTree i -> [[Node i]]
+toView :: NodeTree i -> [[(Node i, Timestamp)]]
 toView (NodeTree bs treeElems) = go bs treeElems []
     where -- If the bit is 0, go left, then right
           go (False:is) (Split left right) = go is left . go is right
           -- Else go right first
           go (True:is)  (Split left right) = go is right . go is left
           go _          (Split _    _    ) = error "toView: unexpected Split"
-          go _          (Bucket (b, _))    = (map fst b :)
+          go _          (Bucket (b, _))    = (map (second lastSeenTimestamp) b :)
 
 -- | Turn the NodeTree into a list of nodes
-toList :: NodeTree i -> [Node i]
+toList :: NodeTree i -> [(Node i, Timestamp)]
 toList = concat . toView
 
 -- | Fold over the buckets
