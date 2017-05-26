@@ -118,20 +118,28 @@ insertNode inst@(KI _ _ (KS sTree _ _) _ cfg) node = do
         writeTVar sTree $ T.insert tree node currentTime `usingConfig` cfg
 
 -- | Signal a Node's timeout and retur wether it should be repinged
-timeoutNode :: (Serialize i, Ord i) => KademliaInstance i a -> i -> IO Bool
-timeoutNode (KI _ _ (KS sTree _ _) _ cfg) nid = do
+timeoutNode :: (Serialize i, Ord i) => KademliaInstance i a -> Peer -> IO Bool
+timeoutNode (KI _ _ (KS sTree _ _) _ cfg) peer = do
     currentTime <- floor <$> getPOSIXTime
     atomically $ do
         tree <- readTVar sTree
-        let (newTree, pingAgain) = T.handleTimeout currentTime tree nid `usingConfig` cfg
+        let (newTree, pingAgain) = T.handleTimeout currentTime tree peer `usingConfig` cfg
         writeTVar sTree newTree
         pure pingAgain
 
 -- | Lookup a Node in the NodeTree
 lookupNode :: (Serialize i, Ord i) => KademliaInstance i a -> i -> IO (Maybe (Node i))
-lookupNode (KI _ _ (KS sTree _ _) _ cfg) nid = atomically $ do
-    tree <- readTVar sTree
-    return $ T.lookup tree nid `usingConfig` cfg
+lookupNode (KI _ _ (KS sTree _ _) _ cfg) nid = do
+    tree <- atomically $ readTVar sTree
+    pure $ T.lookup tree nid `usingConfig` cfg
+
+lookupNodeByPeer :: (Serialize i, Ord i) => KademliaInstance i a -> Peer -> IO (Maybe (Node i))
+lookupNodeByPeer (KI _ _ (KS sTree _ _) _ cfg) peer = do
+    tree <- atomically (readTVar sTree)
+    pure $
+        case M.lookup peer (T.ntPeers tree) of
+            Nothing  -> Nothing
+            Just nid -> T.lookup tree nid `usingConfig` cfg
 
 -- | Return all the Nodes an Instance has encountered so far
 dumpPeers :: KademliaInstance i a -> IO [(Node i, Timestamp)]
@@ -239,7 +247,7 @@ receivingProcessDo inst@(KI _ h _ _ cfg) reply rq = do
                 pingAgain <- timeoutNode inst origin
                 -- If the node should be repinged
                 when pingAgain $ do
-                    result <- lookupNode inst origin
+                    result <- lookupNodeByPeer inst origin
                     case result of
                         Nothing   -> return ()
                         Just node -> sendPing h node (defaultChan rq)
@@ -248,9 +256,10 @@ receivingProcessDo inst@(KI _ h _ _ cfg) reply rq = do
         -- Store values in newly encountered nodes that you are the closest to
         Answer (Signal node _) -> do
             let originId = nodeId node
+            let peerId = peer node
 
             -- If peer is banned, ignore
-            unlessM (isNodeBanned inst originId) $ do
+            unlessM (isNodeBanned inst peerId) $ do
                 tree <- retrieve sTree
 
                 -- This node is not yet known
@@ -284,8 +293,8 @@ backgroundProcess inst@(KI _ h _ _ _) chan threadIds = do
     logInfo h $ "Register chan: reply " ++ show reply
 
     case reply of
-        Answer sig@(Signal (Node _ nid) _) -> do
-            unlessM (isNodeBanned inst nid) $ do
+        Answer sig@(Signal (Node peer _) _) -> do
+            unlessM (isNodeBanned inst peer) $ do
                 handleAnswer sig `catch` logError' h
                 repeatBP
 
@@ -299,11 +308,11 @@ backgroundProcess inst@(KI _ h _ _ _) chan threadIds = do
         _ -> logInfo h "-- unknown reply" >> repeatBP
   where
     repeatBP = backgroundProcess inst chan threadIds
-    handleAnswer sig@(Signal (Node _ nid) _) =
-        unlessM (isNodeBanned inst nid) $ do
+    handleAnswer sig@(Signal (Node peer _) _) =
+        unlessM (isNodeBanned inst peer) $ do
             let node = source sig
             -- Handle the signal
-            handleCommand (command sig) (peer node) inst
+            handleCommand (command sig) peer inst
             -- Insert the node into the tree, if it's already known, it will
             -- be refreshed
             insertNode inst node
@@ -322,7 +331,7 @@ pingProcess (KI _ h (KS sTree _ _) _ cfg) chan = forever . (`catch` logError' h)
 sendPing :: KademliaHandle i a -> Node i -> Chan (Reply i a) -> IO ()
 sendPing h node chan = do
     send h (peer node) PING
-    expect h (RR [R_PONG] (nodeId node)) $ chan
+    expect h (RR [R_PONG] (peer node)) $ chan
 
 -- | Store all values stored in the node in the 'k' closest known nodes every hour
 spreadValueProcess :: (Serialize i)

@@ -1,11 +1,11 @@
 import           Control.Arrow             (first)
 import           Control.Monad             (when)
-import           Control.Monad.Random      (Rand, RandomGen, evalRand,
-                                            getRandom, evalRandIO)
+import           Control.Monad.Random      (Rand, RandomGen, evalRand, evalRandIO,
+                                            getRandom)
 import           Control.Monad.Trans       (lift)
 import qualified Control.Monad.Trans.State as S
-import           Data.Binary               (Binary (..), decodeOrFail, encode,
-                                            getWord8, putWord8)
+import           Data.Binary               (Binary (..), decodeOrFail, encode, getWord8,
+                                            putWord8)
 import qualified Data.ByteString           as B
 import qualified Data.ByteString.Char8     as C
 import           Data.ByteString.Lazy      (fromStrict, toStrict)
@@ -126,9 +126,7 @@ executeCommand (Dump name) = do
         (listToStr $ concat buckets) ++ (unlines $ map (("edge " ++) . show) edges)
 
 connectToPeer :: KademliaInstance -> PortNumber -> B.ByteString -> IO K.JoinResult
-connectToPeer inct peerPort peerId = do
-    let peerNode = K.Node (K.Peer "127.0.0.1" peerPort) . KademliaID $ peerId
-    K.joinNetwork inct peerNode
+connectToPeer inst peerPort _ = K.joinNetwork inst (K.Peer "127.0.0.1" peerPort)
 
 main :: IO ()
 main = do
