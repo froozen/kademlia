@@ -41,8 +41,9 @@ import           Network.Kademlia.Types      (Command (..), Node (..), Serialize
 
 -- | Lookup the value corresponding to a key in the DHT and return it, together
 --   with the Node that was the first to answer the lookup
-lookup :: (Serialize i, Serialize a, Ord i) => KademliaInstance i a -> i
-       -> IO (Maybe (a, Node i))
+lookup
+    :: (Serialize i, Serialize a, Ord i)
+    => KademliaInstance i a -> i -> IO (Maybe (a, Node i))
 lookup inst nid = runLookup go inst nid
     where go = startLookup (config inst) sendS cancel checkSignal
 
@@ -97,8 +98,9 @@ lookup inst nid = runLookup go inst nid
           finishCheck _ = finish
 
 -- | Store assign a value to a key and store it in the DHT
-store :: (Serialize i, Serialize a, Ord i) =>
-         KademliaInstance i a -> i -> a -> IO ()
+store
+    :: (Serialize i, Serialize a, Ord i)
+    => KademliaInstance i a -> i -> a -> IO ()
 store inst key val = runLookup go inst key
     where go = startLookup (config inst) sendS end checkSignal
 
@@ -141,8 +143,9 @@ data JoinResult
     deriving (Eq, Ord, Show)
 
 -- | Make a KademliaInstance join the network a supplied Node is in
-joinNetwork :: (Serialize i, Serialize a, Ord i) => KademliaInstance i a
-            -> Node i -> IO JoinResult
+joinNetwork
+    :: (Serialize i, Serialize a, Ord i)
+    => KademliaInstance i a -> Node i -> IO JoinResult
 joinNetwork inst node = ownId >>= runLookup go inst
     where go = do
             -- If node is banned, quit
@@ -242,10 +245,13 @@ runLookup lookupM inst nid = do
     evalStateT lookupM state
 
 -- The initial phase of the normal kademlia lookup operation
-startLookup :: (Serialize i, Serialize a, Ord i)
-            => KademliaConfig
-            -> (Node i -> LookupM i a ())
-            -> LookupM i a b -> (Signal i a -> LookupM i a b) -> LookupM i a b
+startLookup
+    :: (Serialize i, Serialize a, Ord i)
+    => KademliaConfig
+    -> (Node i -> LookupM i a ())
+    -> LookupM i a b
+    -> (Signal i a -> LookupM i a b)
+    -> LookupM i a b
 startLookup cfg signalAction cancel onSignal = do
     inst  <- gets inst
     tree  <- liftIO . atomically . readTVar . sTree . state $ inst
@@ -346,49 +352,51 @@ continueLookup nodes signalAction continue end = do
     polled  <- gets polled
 
     -- Pick the k closest known nodes, that haven't been polled yet
-    let newKnown = take (k $ config inst) . (`usingConfig` config inst) . flip sortByDistanceTo nid . filter (`notElem` polled)
-                      $ nodes ++ known
+    let newKnown = take (k $ config inst) .
+                   (`usingConfig` config inst) .
+                   flip sortByDistanceTo nid .
+                   filter (`notElem` polled) $
+                   nodes ++ known
 
     -- Check if k closest nodes have been polled already
     polledNeighbours <- allClosestPolled inst newKnown
-    if (not . null $ newKnown) && not polledNeighbours
-        then do
-            -- Send signal to the closest node, that hasn't
-            -- been polled yet
-            let next = head $ sortByDistanceTo newKnown nid `usingConfig` config inst
-            signalAction next
+    if (not . null $ newKnown) && not polledNeighbours then do
+        -- Send signal to the closest node, that hasn't
+        -- been polled yet
+        let next = head $ sortByDistanceTo newKnown nid `usingConfig` config inst
+        signalAction next
 
-            -- Update known
-            modify $ \s -> s { known = newKnown }
+        -- Update known
+        modify $ \s -> s { known = newKnown }
 
-            -- Continue the lookup
-            continue
+        -- Continue the lookup
+        continue
+    -- If there are still pending replies
+    else if not . null $ pending
+    -- Wait for the pending replies to finish
+    then continue
+    -- Stop recursive lookup
+    else end
+  where
+    allClosestPolled inst known = do
+        polled       <- gets polled
+        closestKnown <- closest inst known
+        pure . all (`elem` polled) $ closestKnown
 
-        -- If there are still pending replies
-        else if not . null $ pending
-            -- Wait for the pending replies to finish
-            then continue
-            -- Stop recursive lookup
-            else end
+    closest inst known = do
+        cid    <- gets targetId
+        polled <- gets polled
 
-    where allClosestPolled inst known = do
-            polled       <- gets polled
-            closestKnown <- closest inst known
-
-            return . all (`elem` polled) $ closestKnown
-
-          closest inst known = do
-            cid    <- gets targetId
-            polled <- gets polled
-
-            -- Return the k closest nodes, the lookup had contact with
-            return . take (k $ config inst) $ sortByDistanceTo (known ++ polled) cid `usingConfig` config inst
+        -- Return the k closest nodes, the lookup had contact with
+        pure . take (k $ config inst) $
+            sortByDistanceTo (known ++ polled) cid `usingConfig` config inst
 
 -- Send a signal to a node
-sendSignal :: Ord i
-           => Command i a
-           -> Node i
-           -> LookupM i a ()
+sendSignal
+    :: Ord i
+    => Command i a
+    -> Node i
+    -> LookupM i a ()
 sendSignal cmd node = do
     inst <- gets inst
 
@@ -412,8 +420,9 @@ sendSignal cmd node = do
             }
 
     -- Determine the appropriate ReplyRegistrations to the command
-    where regs = case cmd of
-                    (FIND_NODE nid)  -> RR [R_RETURN_NODES nid] (nodeId node)
-                    (FIND_VALUE nid) ->
-                        RR [R_RETURN_NODES nid, R_RETURN_VALUE nid] (nodeId node)
-                    _               -> error "Unknown command at @sendSignal@"
+  where
+    regs = case cmd of
+        (FIND_NODE nid)  -> RR [R_RETURN_NODES nid] (nodeId node)
+        (FIND_VALUE nid) ->
+            RR [R_RETURN_NODES nid, R_RETURN_VALUE nid] (nodeId node)
+        _               -> error "Unknown command at @sendSignal@"
