@@ -30,7 +30,7 @@ import           Control.Monad          (forM_)
 import           Data.List              (delete, find)
 import           Data.Maybe             (isJust)
 
-import           Network.Kademlia.Types (Command (..), Node (..), Signal (..))
+import           Network.Kademlia.Types (Command (..), Node (..), Peer, Signal (..))
 import           Network.Kademlia.Utils (threadDelay)
 
 -- | The different types a replied signal could possibly have.
@@ -46,7 +46,7 @@ data ReplyType i = R_PONG
 -- | The representation of registered replies
 data ReplyRegistration i = RR {
       replyTypes  :: [ReplyType i]
-    , replyOrigin :: i
+    , replyOrigin :: Peer
     } deriving (Eq, Show)
 
 -- | Convert a Signal into its ReplyRegistration representation
@@ -54,15 +54,16 @@ toRegistration :: Reply i a -> Maybe (ReplyRegistration i)
 toRegistration Closed        = Nothing
 toRegistration (Timeout reg) = Just reg
 toRegistration (Answer sig)  = case rType . command $ sig of
-            Nothing -> Nothing
-            Just rt -> Just (RR [rt] origin)
-    where origin = nodeId $ source sig
+    Nothing -> Nothing
+    Just rt -> Just (RR [rt] origin)
+  where
+    origin = peer $ source sig
 
-          rType :: Command i a -> Maybe (ReplyType i)
-          rType  PONG                  = Just  R_PONG
-          rType (RETURN_VALUE nid _)   = Just (R_RETURN_VALUE nid)
-          rType (RETURN_NODES _ nid _) = Just (R_RETURN_NODES nid)
-          rType _                      = Nothing
+    rType :: Command i a -> Maybe (ReplyType i)
+    rType  PONG                  = Just  R_PONG
+    rType (RETURN_VALUE nid _)   = Just (R_RETURN_VALUE nid)
+    rType (RETURN_NODES _ nid _) = Just (R_RETURN_NODES nid)
+    rType _                      = Nothing
 
 -- | Compare wether two ReplyRegistrations match
 matchRegistrations :: (Eq i) => ReplyRegistration i -> ReplyRegistration i -> Bool

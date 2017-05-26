@@ -78,15 +78,17 @@ data BanState
     deriving (Eq, Show, Generic)
 
 -- | Representation of the data the KademliaProcess carries
-data KademliaState i a = KS {
+data KademliaState i a
+    = KS {
       sTree  :: TVar (T.NodeTree i)
-    , banned :: TVar (Map i BanState)
+    , banned :: TVar (Map Peer BanState)
     , values :: Maybe (TVar (Map i a))
     }
 
-data KademliaSnapshot i = KSP {
+data KademliaSnapshot i
+    = KSP {
       spTree   :: T.NodeTree i
-    , spBanned :: Map i BanState
+    , spBanned :: Map Peer BanState
     } deriving (Generic)
 
 instance Binary BanState
@@ -94,8 +96,9 @@ instance Binary BanState
 instance Binary i => Binary (KademliaSnapshot i)
 
 -- | Create a new KademliaInstance from an Id and a KademliaHandle
-newInstance :: (Serialize i) =>
-               i -> KademliaConfig -> KademliaHandle i a -> IO (KademliaInstance i a)
+newInstance
+    :: Serialize i
+    => i -> KademliaConfig -> KademliaHandle i a -> IO (KademliaInstance i a)
 newInstance nid cfg handle = do
     tree <- atomically $ newTVar (T.create nid `usingConfig` cfg)
     banned <- atomically . newTVar $ M.empty
@@ -110,7 +113,7 @@ newInstance nid cfg handle = do
 insertNode :: (Serialize i, Ord i) => KademliaInstance i a -> Node i -> IO ()
 insertNode inst@(KI _ _ (KS sTree _ _) _ cfg) node = do
     currentTime <- floor <$> getPOSIXTime
-    unlessM (isNodeBanned inst $ nodeId node) $ atomically $ do
+    unlessM (isNodeBanned inst $ peer node) $ atomically $ do
         tree <- readTVar sTree
         writeTVar sTree $ T.insert tree node currentTime `usingConfig` cfg
 
@@ -122,7 +125,7 @@ timeoutNode (KI _ _ (KS sTree _ _) _ cfg) nid = do
         tree <- readTVar sTree
         let (newTree, pingAgain) = T.handleTimeout currentTime tree nid `usingConfig` cfg
         writeTVar sTree newTree
-        return pingAgain
+        pure pingAgain
 
 -- | Lookup a Node in the NodeTree
 lookupNode :: (Serialize i, Ord i) => KademliaInstance i a -> i -> IO (Maybe (Node i))
@@ -160,25 +163,25 @@ lookupValue key (KI _ _ (KS _ _ (Just values)) _ _) = atomically $ do
     return . M.lookup key $ vals
 
 -- | Check whether node is banned
-isNodeBanned :: Ord i => KademliaInstance i a -> i -> IO Bool
-isNodeBanned (KI _ _ (KS _ banned _) _ _) nid = do
+isNodeBanned :: Ord i => KademliaInstance i a -> Peer -> IO Bool
+isNodeBanned (KI _ _ (KS _ banned _) _ _) pr = do
     banSet <- atomically $ readTVar banned
-    case M.lookup nid banSet of
-        Nothing -> return False
+    case M.lookup pr banSet of
+        Nothing -> pure False
         Just b  -> do
             stillBanned <- isBanned b
-            unless stillBanned $ atomically . modifyTVar banned $ M.delete nid
-            return stillBanned
+            unless stillBanned $ atomically . modifyTVar banned $ M.delete pr
+            pure stillBanned
   where
-    isBanned NoBan       = return False
-    isBanned BanForever  = return True
+    isBanned NoBan       = pure False
+    isBanned BanForever  = pure True
     isBanned (BanTill t) = ( < t) . round <$> getPOSIXTime
 
 -- | Mark node as banned
-banNode :: (Serialize i, Ord i) => KademliaInstance i a -> i -> BanState -> IO ()
-banNode (KI _ _ (KS sTree banned _) _ cfg) nid ban = atomically $ do
-    modifyTVar banned $ M.insert nid ban
-    modifyTVar sTree $ \t -> T.delete t nid `usingConfig` cfg
+banNode :: (Serialize i, Ord i) => KademliaInstance i a -> Node i -> BanState -> IO ()
+banNode (KI _ _ (KS sTree banned _) _ cfg) node ban = atomically $ do
+    modifyTVar banned $ M.insert (peer node) ban
+    modifyTVar sTree $ \t -> T.delete t (peer node) `usingConfig` cfg
 
 -- | Shows stored buckets, ordered by distance to this node
 viewBuckets :: KademliaInstance i a -> IO [[(Node i, Timestamp)]]
@@ -268,9 +271,9 @@ receivingProcessDo inst@(KI _ h _ _ cfg) reply rq = do
                 dispatch reply rq
         Closed -> dispatch reply rq -- if Closed message
 
-    where
-        retrieve f = atomically . readTVar . f . state $ inst
-        retrieveMaybe f = maybe (pure mempty) (atomically . readTVar) . f . state $ inst
+  where
+    retrieve f = atomically . readTVar . f . state $ inst
+    retrieveMaybe f = maybe (pure mempty) (atomically . readTVar) . f . state $ inst
 
 -- | The actual process running in the background
 backgroundProcess :: (Show i, Serialize i, Ord i, Serialize a, Eq a) =>

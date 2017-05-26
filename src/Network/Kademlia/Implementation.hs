@@ -35,8 +35,9 @@ import           Network.Kademlia.Instance   (KademliaInstance (..), KademliaSta
 import           Network.Kademlia.Networking (expect, send)
 import           Network.Kademlia.ReplyQueue hiding (logError, logInfo)
 import qualified Network.Kademlia.Tree       as T
-import           Network.Kademlia.Types      (Command (..), Node (..), Serialize (..),
-                                              Signal (..), sortByDistanceTo)
+import           Network.Kademlia.Types      (Command (..), Node (..), Peer,
+                                              Serialize (..), Signal (..),
+                                              sortByDistanceTo)
 
 
 -- | Lookup the value corresponding to a key in the DHT and return it, together
@@ -295,16 +296,16 @@ waitForReply cancel onSignal = do
                     liftIO . insertNode inst $ node
 
                     case cmd of
-                      RETURN_NODES n nid _ -> do
-                        toRemove <- maybe True ((>= n) . (+1)) <$> gets (M.lookup node . pending)
-                        if toRemove
-                           then removeFromPending node
-                           else do
-                               modify $ \s -> s { pending = M.adjust (+1) node $ pending s }
-                               let h = handle inst
-                                   reg = RR [R_RETURN_NODES nid] (nodeId node)
-                               liftIO $ expect h reg chan
-                      _ -> removeFromPending node
+                        RETURN_NODES n nid _ -> do
+                            toRemove <- maybe True ((>= n) . (+1)) <$> gets (M.lookup node . pending)
+                            if toRemove
+                            then removeFromPending node
+                            else do
+                                modify $ \s -> s { pending = M.adjust (+1) node $ pending s }
+                                let h = handle inst
+                                    reg = RR [R_RETURN_NODES nid] (nodeId node)
+                                liftIO $ expect h reg chan
+                        _ -> removeFromPending node
                     -- Call the signal handler
                     onSignal sig
 
@@ -395,13 +396,13 @@ continueLookup nodes signalAction continue end = do
 sendSignal
     :: Ord i
     => Command i a
-    -> Node i
+    -> Peer
     -> LookupM i a ()
-sendSignal cmd node = do
+sendSignal cmd peer = do
     inst <- gets inst
 
     -- Not interested in results from banned node
-    unlessM (liftIO $ isNodeBanned inst $ nodeId node) $ do
+    unlessM (liftIO $ isNodeBanned inst $ peer) $ do
         let h = handle inst
         chan <- gets replyChan
         polled <- gets polled
@@ -422,7 +423,7 @@ sendSignal cmd node = do
     -- Determine the appropriate ReplyRegistrations to the command
   where
     regs = case cmd of
-        (FIND_NODE nid)  -> RR [R_RETURN_NODES nid] (nodeId node)
-        (FIND_VALUE nid) ->
+        FIND_NODE nid  -> RR [R_RETURN_NODES nid] peer
+        FIND_VALUE nid ->
             RR [R_RETURN_NODES nid, R_RETURN_VALUE nid] (nodeId node)
         _               -> error "Unknown command at @sendSignal@"
