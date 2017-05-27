@@ -5,21 +5,27 @@ Description : Tests for Network.Kademlia.Networking
 Tests specific to Network.Kademlia.Networking.
 -}
 
-module Networking where
+module Networking
+       ( expectCheck
+       , sendCheck
+       ) where
 
-import Test.QuickCheck
-import Test.QuickCheck.Monadic
 
-import Network.Kademlia.Networking
-import Network.Kademlia.Types
-import Network.Kademlia.ReplyQueue
-import Control.Monad
-import Control.Concurrent.Chan
-import Control.Concurrent.STM
-import qualified Data.ByteString.Char8 as C
-import Data.Maybe (isJust)
+import           Control.Concurrent.Chan     (Chan, newChan, readChan)
+import           Data.Maybe                  (isJust)
+import           Test.QuickCheck             (Gen, Property, arbitrary)
+import           Test.QuickCheck.Monadic     (PropertyM, assert, monadicIO, pick, pre,
+                                              run)
 
-import TestTypes
+import           Network.Kademlia.Networking (KademliaHandle (..), closeK, expect, openOn,
+                                              send, startRecvProcess)
+import           Network.Kademlia.ReplyQueue (Reply (..), ReplyQueue (..),
+                                              ReplyRegistration (RR), ReplyType (..),
+                                              dispatch, emptyReplyQueue)
+import           Network.Kademlia.Types      (Command (..), Node (..), Peer (..),
+                                              Signal (..))
+
+import           TestTypes                   (IdType (..))
 
 valueSet :: (Monad m) => PropertyM m (Peer, Peer, IdType, IdType)
 valueSet = do
@@ -40,8 +46,9 @@ sendCheck cmd = monadicIO $ do
         rqA <- emptyReplyQueue
         rqB <- emptyReplyQueue
 
-        khA <- openOn "1122" idA rqA
-        khB <- (openOn "1123" idB rqB :: IO (KademliaHandle IdType String))
+        khA <- openOn "127.0.0.1" "1122" idA rqA
+        khB <- (openOn "127.0.0.1" "1123" idB rqB
+                    :: IO (KademliaHandle IdType String))
 
         startRecvProcess khB
 
@@ -70,7 +77,7 @@ expectCheck sig idA = monadicIO $ do
     replySig <- run $ do
         rqA <- emptyReplyQueue
 
-        khA <- openOn "1122" idA rqA
+        khA <- openOn "127.0.0.1" "1122" idA rqA
 
         startRecvProcess khA
 
@@ -88,7 +95,7 @@ expectCheck sig idA = monadicIO $ do
 
 -- | Convert a command into a ReplyType
 rType :: Command i a -> Maybe (ReplyType i)
-rType  PONG               = Just  R_PONG
-rType (RETURN_VALUE id _) = Just (R_RETURN_VALUE id)
-rType (RETURN_NODES id _) = Just (R_RETURN_NODES id)
-rType _ = Nothing
+rType  PONG                  = Just  R_PONG
+rType (RETURN_VALUE nid _)   = Just (R_RETURN_VALUE nid)
+rType (RETURN_NODES _ nid _) = Just (R_RETURN_NODES nid)
+rType _                      = Nothing
