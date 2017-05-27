@@ -53,7 +53,7 @@ import           Network.Kademlia.Networking (KademliaHandle (..), expect, logEr
                                               send, startRecvProcess)
 import           Network.Kademlia.ReplyQueue (Reply (..), ReplyQueue (timeoutChan),
                                               ReplyRegistration (..), ReplyType (..),
-                                              defaultChan, dispatch, expectedReply)
+                                              dispatch, expectedReply, requestChan)
 import qualified Network.Kademlia.Tree       as T
 import           Network.Kademlia.Types      (Command (..), Node (..), Peer (..),
                                               Serialize (..), Signal (..), Timestamp,
@@ -210,9 +210,9 @@ start inst = do
     let rq = replyQueue $ handle inst
     startRecvProcess . handle $ inst
     receivingId <- forkIO $ receivingProcess inst
-    pingId <- forkIO $ pingProcess inst $ defaultChan rq
+    pingId <- forkIO $ pingProcess inst $ requestChan rq
     spreadId <- forkIO $ spreadValueProcess inst
-    void . forkIO $ backgroundProcess inst (defaultChan rq) [pingId, spreadId, receivingId]
+    void . forkIO $ backgroundProcess inst (requestChan rq) [pingId, spreadId, receivingId]
 
 -- | The central process all Replys go trough
 receivingProcess
@@ -256,7 +256,7 @@ receivingProcessDo inst@(KI _ h _ _ cfg) reply rq = do
                     result <- lookupNodeByPeer inst origin
                     case result of
                         Nothing   -> return ()
-                        Just node -> sendPing h node (defaultChan rq)
+                        Just node -> sendPing h node (requestChan rq)
             dispatch reply rq -- remove node from ReplyQueue in the last time
 
         -- Store values in newly encountered nodes that you are the closest to
@@ -401,7 +401,7 @@ handleCommand (FIND_VALUE key) peer inst = do
 handleCommand (RETURN_NODES _ _ nodes) _ inst@KI{..} = forM_ nodes $ \retNode -> do
     result <- lookupNode inst . nodeId $ retNode
     case result of
-        Nothing -> sendPing handle retNode (defaultChan $ replyQueue $ handle)
+        Nothing -> sendPing handle retNode (requestChan $ replyQueue $ handle)
         _       -> return ()
 handleCommand _ _ _ = return ()
 

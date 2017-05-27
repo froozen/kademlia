@@ -79,8 +79,13 @@ data Reply i a = Answer (Signal i a)
 -- | The actual type representing a ReplyQueue
 data ReplyQueue i a = RQ {
       queue       :: (TVar [(ReplyRegistration i, Chan (Reply i a), ThreadId)])
+    -- ^ Queue of expected responses
     , timeoutChan :: Chan (Reply i a)
-    , defaultChan :: Chan (Reply i a)
+    -- ^ Channel for initial receiving of messages.
+    -- Messages from this channel will be dispatched (via @dispatch@)
+    , requestChan :: Chan (Reply i a)
+    -- ^ This channels needed for accepting requests from nodes.
+    -- Only request will be processed, reply will be ignored.
     , logInfo     :: String -> IO ()
     , logError    :: String -> IO ()
     }
@@ -148,7 +153,7 @@ dispatch reply rq = do
         -- Send the reply over the default channel
         Nothing -> do
             logInfo rq (" -- dispatch reply " ++ show reply ++ ": not in queue")
-            writeChan (defaultChan rq) reply
+            writeChan (requestChan rq) reply
 
     where matches regA (regB, _, _) = matchRegistrations regA regB
 
