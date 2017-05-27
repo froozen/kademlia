@@ -32,7 +32,7 @@ import           Data.Word                   (Word8)
 
 import           Network.Kademlia.Config     (KademliaConfig (..), usingConfig)
 import           Network.Kademlia.Instance   (KademliaInstance (..), KademliaState (..),
-                                              insertNode, isNodeBanned)
+                                              insertNode, isNodeBanned, peersToNodeIds)
 import           Network.Kademlia.Networking (expect, send)
 import           Network.Kademlia.ReplyQueue hiding (logError, logInfo)
 import qualified Network.Kademlia.Tree       as T
@@ -440,6 +440,4 @@ sendSignal cmd peer = do
 resolveNodeIds
     :: MonadIO m
     => KademliaInstance i a -> [Peer] -> m [Node i]
-resolveNodeIds (KI _ _ (KS sTree _ _) _ _) peers = do
-    knownPeers <- T.ntPeers <$> liftIO (atomically $ readTVar sTree)
-    pure $ catMaybes $ zipWith (fmap . Node) peers $ map (`M.lookup` knownPeers) peers
+resolveNodeIds inst peers = catMaybes <$> liftIO (peersToNodeIds inst peers)

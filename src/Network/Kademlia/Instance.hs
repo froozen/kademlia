@@ -26,6 +26,7 @@ module Network.Kademlia.Instance
     , takeSnapshot'
     , restoreInstance
     , viewBuckets
+    , peersToNodeIds
     ) where
 
 import           Control.Arrow               (second)
@@ -196,6 +197,11 @@ viewBuckets :: KademliaInstance i a -> IO [[(Node i, Timestamp)]]
 viewBuckets (KI _ _ (KS sTree _ _) _ _) = do
     currentTime <- floor <$> getPOSIXTime
     map (map $ second (currentTime -)) <$> T.toView <$> readTVarIO sTree
+
+peersToNodeIds :: KademliaInstance i a -> [Peer] -> IO [Maybe (Node i)]
+peersToNodeIds (KI _ _ (KS sTree _ _) _ _) peers = do
+    knownPeers <- T.ntPeers <$> atomically (readTVar sTree)
+    pure $ zipWith (fmap . Node) peers $ map (`M.lookup` knownPeers) peers
 
 -- | Start the background process for a KademliaInstance
 start :: (Show i, Serialize i, Ord i, Serialize a, Eq a) =>
