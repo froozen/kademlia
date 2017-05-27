@@ -7,44 +7,64 @@ Network.Kademlia codebase.
 -}
 
 module Network.Kademlia.Types
-    ( Peer(..)
-    , toPeer
-    , Node(..)
-    , sortByDistanceTo
-    , Serialize(..)
-    , Signal(..)
-    , Command(..)
-    , ByteStruct(..)
-    , toByteStruct
-    , fromByteStruct
-    , distance
-    ) where
+       ( ByteStruct
+       , Command   (..)
+       , Node      (..)
+       , Peer      (..)
+       , Serialize (..)
+       , Signal    (..)
 
-import Network.Socket (SockAddr(..), PortNumber, inet_ntoa, inet_addr)
-import qualified Data.ByteString as B (ByteString, foldr, pack)
-import Data.Bits (testBit, setBit, zeroBits)
-import Data.List (sortBy)
-import Data.Function (on)
+       , distance
+       , fromByteStruct
+       , sortByDistanceTo
+       , toByteStruct
+       , toPeer
+       ) where
+
+import           Data.Binary             (Binary (..))
+import           Data.Bits               (setBit, testBit, zeroBits)
+import qualified Data.ByteString         as B (ByteString, foldr, pack)
+import           Data.Function           (on)
+import           Data.List               (sortBy)
+import           Data.Word               (Word8)
+import           GHC.Generics            (Generic)
+import           Network.Socket          (PortNumber, SockAddr (..), inet_ntoa)
+
+import           Network.Kademlia.Config (WithConfig, getConfig)
+import qualified Network.Kademlia.Config as C
 
 -- | Representation of an UDP peer
 data Peer = Peer {
       peerHost :: String
     , peerPort :: PortNumber
-    } deriving (Eq, Ord, Show)
+    } deriving (Eq, Ord, Generic)
+
+instance Show Peer where
+  show (Peer h p) = h ++ ":" ++ show p
+
+instance Binary Peer where
+    get = Peer <$> get <*> (toEnum <$> get)
+    put (Peer h p) = put h >> put (fromEnum p)
 
 -- | Representation of a Kademlia Node, containing a Peer and an Id
 data Node i = Node {
-      peer :: Peer
+      peer   :: Peer
     , nodeId :: i
-    } deriving (Eq, Ord, Show)
+    } deriving (Eq, Ord, Generic)
+
+instance Show i => Show (Node i) where
+  show (Node peer nodeId) = show peer ++ " (" ++ show nodeId ++ ")"
+
+instance Binary i => Binary (Node i)
 
 -- | Sort a bucket by the closeness of its nodes to a give Id
-sortByDistanceTo :: (Serialize i) => [Node i] -> i -> [Node i]
-sortByDistanceTo bucket id = unpack . sort . pack $ bucket
-    where pack bk = zip bk $ map f bk
-          f = distance id . nodeId
-          sort = sortBy (compare `on` snd)
-          unpack = map fst
+sortByDistanceTo :: (Serialize i) => [Node i] -> i -> WithConfig [Node i]
+sortByDistanceTo bucket nid = do
+    let pack bk = zip bk <$> sequence (map f bk)
+        f = distance nid . nodeId
+        sort = sortBy (compare `on` snd)
+        unpack = map fst
+    unpack . sort <$> pack bucket
 
 -- | A structure serializable into and parsable from a ByteString
 class Serialize a where
@@ -55,30 +75,34 @@ class Serialize a where
 type ByteStruct = [Bool]
 
 -- | Converts a Serialize into a ByteStruct
-toByteStruct :: (Serialize a) => a -> ByteStruct
-toByteStruct s = B.foldr (\w bits -> convert w ++ bits) [] $ toBS s
-    where convert w = foldr (\i bits -> testBit w i : bits) [] [0..7]
+toByteStruct :: (Serialize a) => a -> WithConfig ByteStruct
+toByteStruct s = do
+    k <- C.k <$> getConfig
+    let convert w = foldr (\i bits -> testBit w i : bits) [] [0..k]
+    return $ B.foldr (\w bits -> convert w ++ bits) [] $ toBS s
 
 -- | Convert a ByteStruct back to its ByteString form
-fromByteStruct :: (Serialize a) => ByteStruct -> a
-fromByteStruct bs = case fromBS s of
-                    (Right (converted, _)) -> converted
-                    (Left err) -> error $ "Failed to convert from ByteStruct: " ++ err
-    where s = B.pack . foldr (\i ws -> createWord i : ws) [] $ indexes
-          indexes = [0..(length bs `div` 8) -1]
-          createWord i = let pos = i * 8
-                         in foldr changeBit zeroBits [pos..pos+7]
-
-          changeBit i w = if bs !! i
-                then setBit w (i `mod` 8)
-                else w
+fromByteStruct :: (Serialize a) => ByteStruct -> WithConfig a
+fromByteStruct bs = do
+    k <- C.k <$> getConfig
+    let s = B.pack . foldr (\i ws -> createWord i : ws) [] $ indexes
+        indexes = [0..(length bs `div` (k + 1)) - 1]
+        createWord i = let pos = i * (k + 1)
+                       in foldr changeBit zeroBits [pos..pos + k]
+        changeBit i w = if bs !! i
+              then setBit w (i `mod` (k + 1))
+              else w
+    case fromBS s of
+        (Right (converted, _)) -> return converted
+        (Left err) -> error $ "Failed to convert from ByteStruct: " ++ err
 
 -- Calculate the distance between two Ids, as specified in the Kademlia paper
-distance :: (Serialize i) => i -> i -> ByteStruct
-distance idA idB = let bsA = toByteStruct idA
-                       bsB = toByteStruct idB
-                   in  zipWith xor bsA bsB
-    where xor a b = not (a && b) && (a || b)
+distance :: (Serialize i) => i -> i -> WithConfig ByteStruct
+distance idA idB = do
+    bsA <- toByteStruct idA
+    bsB <- toByteStruct idB
+    return $ zipWith xor bsA bsB
+  where xor a b = not (a && b) && (a || b)
 
 -- | Try to convert a SockAddr to a Peer
 toPeer :: SockAddr -> IO (Maybe Peer)
@@ -89,7 +113,7 @@ toPeer _ = return Nothing
 
 -- | Representation of a protocl signal
 data Signal i v = Signal {
-      source :: Node i
+      source  :: Node i
     , command :: Command i v
     } deriving (Show, Eq)
 
@@ -98,7 +122,16 @@ data Command i a = PING
                  | PONG
                  | STORE        i a
                  | FIND_NODE    i
-                 | RETURN_NODES i [Node i]
+                 | RETURN_NODES Word8 i [Node i]
                  | FIND_VALUE   i
                  | RETURN_VALUE i a
-                   deriving (Eq, Show)
+                   deriving (Eq)
+
+instance Show i => Show (Command i a) where
+  show PING                   = "PING"
+  show PONG                   = "PONG"
+  show (STORE        i _)     = "STORE " ++ show i ++ " <data>"
+  show (FIND_NODE    i)       = "FIND_NODE " ++ show i
+  show (RETURN_NODES n i nodes) = "RETURN_NODES (one of " ++ show n ++ " messages) " ++ show i ++ " " ++ show nodes
+  show (FIND_VALUE   i)       = "FIND_VALUE " ++ show i
+  show (RETURN_VALUE i _)     = "RETURN_VALUE " ++ show i ++ " <data>"
