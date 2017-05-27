@@ -395,14 +395,6 @@ handleCommand (FIND_VALUE key) peer inst = do
     case result of
         Just value -> liftIO $ send (handle inst) peer $ RETURN_VALUE key value
         Nothing    -> returnNodes peer key inst
--- Ping unknown Nodes that were returned by RETURN_NODES.
--- Pinging them first is neccessary to prevent disconnected
--- nodes from spreading through the networks NodeTrees.
-handleCommand (RETURN_NODES _ _ nodes) _ inst@KI{..} = forM_ nodes $ \retNode -> do
-    result <- lookupNode inst . nodeId $ retNode
-    case result of
-        Nothing -> sendPing handle retNode (requestChan $ replyQueue $ handle)
-        _       -> return ()
 handleCommand _ _ _ = return ()
 
 -- | Return a KBucket with the closest Nodes to a supplied Id
