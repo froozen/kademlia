@@ -1,7 +1,7 @@
 kademlia
 ========
 
-kademlia is a haskell libraray implementing the [Kademlia][wiki_kademlia]
+kademlia is a haskell library implementing the [Kademlia][wiki_kademlia]
 [distributed hash table][wiki_dht].
 
 It aims to be flexible and handle all the low-level work, in order to allow
