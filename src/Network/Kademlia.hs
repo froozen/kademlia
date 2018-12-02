@@ -53,7 +53,7 @@ the network.
 > instance K.Serialize KademliaID where
 >    toBS (KademliaID bs)
 >        | B.length bs >= 5 = B.take 5 bs
->        | otherwise        = error "KademliaID to short!"
+>        | otherwise        = error "KademliaID too short!"
 >
 >    fromBS bs
 >        | B.length bs >= 5 = Right . first KademliaID . B.splitAt 5 $ bs
@@ -85,7 +85,7 @@ Now you're ready to dive in and use the DHT:
 >             let exampleValue = Person 25 "Alan Turing"
 >             K.store secondInstance (KademliaID . C.pack $ "raxqT") exampleValue
 >
->             -- Look up the value and it's source
+>             -- Look up the value and its source
 >             (value, source) <- K.lookup firstInstance . KademliaID . C.pack $ "raxqT"
 >             print value
 >
